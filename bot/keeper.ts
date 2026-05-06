@@ -149,24 +149,30 @@ function computeRandomness(seed: bigint, second: number): bigint {
   return ((h % 1_000_000n) + 1_000_000n) % 1_000_000n; // ensure positive
 }
 
-function calcPriceMove(price: number, randomness: bigint): number {
+function calcPriceMove(price: number, randomness: bigint, trendBias: number): number {
   const magnitudeSeed = Number(randomness % 100n);
   let magnitude: bigint;
 
-  if (magnitudeSeed <= 50) magnitude = 1n;       // 0.001%
-  else if (magnitudeSeed <= 80) magnitude = 10n;  // 0.01%
-  else if (magnitudeSeed <= 95) magnitude = 100n; // 0.1%
-  else if (magnitudeSeed <= 99) magnitude = 1000n;// 1%
-  else magnitude = 5000n;                          // 5% EXTREME
+  // INCREASED VOLATILITY - 3XTREMES STYLE
+  if (magnitudeSeed <= 30) magnitude = 10n;       // 0.01%
+  else if (magnitudeSeed <= 60) magnitude = 80n;  // 0.08%
+  else if (magnitudeSeed <= 85) magnitude = 300n; // 0.30%
+  else if (magnitudeSeed <= 96) magnitude = 800n; // 0.80%
+  else magnitude = 3000n;                          // 3.00% EXTREME BLAST
 
   const priceMove = Math.max(1, Math.floor((price * Number(magnitude)) / Number(MOVE_DENOMINATOR)));
 
-  if (randomness < THRESHOLD_DOWN) {
-    return Math.max(1, price - priceMove); // DOWN
-  } else if (randomness < THRESHOLD_SIDEWAYS) {
-    return price; // SIDEWAYS
+  // Bias thresholds based on round trend
+  const downT = THRESHOLD_DOWN + BigInt(trendBias * 8000);
+  const sideT = THRESHOLD_SIDEWAYS + BigInt(trendBias * 8000);
+
+  if (randomness < downT) {
+    return Math.max(1, price - priceMove);
+  } else if (randomness < sideT) {
+    // Tiny jitter even on sideways
+    return price + (Number(randomness % 7n) - 3);
   } else {
-    return price + priceMove; // UP
+    return price + priceMove;
   }
 }
 
@@ -183,15 +189,18 @@ function computeCandles(seed: bigint, startPrice: number): Candle[] {
   const candles: Candle[] = [];
   let price = startPrice;
 
+  // Determine trend for this round: -25 to +25 bias
+  const trendBias = Number((seed % 51n) - 25n);
+
   for (let s = 0; s < 60; s++) {
     const randomness = computeRandomness(seed, s);
     const open = price;
-    const close = calcPriceMove(price, randomness);
+    const close = calcPriceMove(price, randomness, trendBias);
 
-    // Simulate intra-candle high/low (small noise)
-    const noise = Math.max(1, Math.floor(price * 0.0001));
-    const high = Math.max(open, close) + Math.floor(Math.random() * noise);
-    const low = Math.max(1, Math.min(open, close) - Math.floor(Math.random() * noise));
+    // Simulate intra-candle high/low (volatile noise)
+    const noise = Math.max(5, Math.floor(price * 0.001));
+    const high = Math.max(open, close) + Math.floor(Number(randomness % BigInt(noise)));
+    const low = Math.max(1, Math.min(open, close) - Math.floor(Number((randomness >> 8n) % BigInt(noise))));
 
     candles.push({ second: s, open, high, low, close, price: close });
     price = close;
