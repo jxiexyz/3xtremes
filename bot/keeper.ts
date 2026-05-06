@@ -262,6 +262,7 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     const candleMsg = {
       type: "CANDLE",
       roundId,
+      time: Math.floor(Date.now() / 1000), // Absolute timestamp for chart continuity
       second: candle.second,
       open: candle.open,
       high: candle.high,
