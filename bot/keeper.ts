@@ -294,10 +294,8 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     candleHistory.push(candleMsg);
     if (candleHistory.length > 200) candleHistory.shift();
 
-    // Update price on-chain every 2 seconds for high accuracy
-    if (candle.second % 2 === 0) {
-      updatePriceOnChain(candle.close);
-    }
+    // Update price on-chain every SECOND for ultra-high accuracy (Crucial for 10,000x leverage)
+    updatePriceOnChain(candle.close);
 
     broadcast(candleMsg);
 
