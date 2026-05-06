@@ -303,6 +303,7 @@ export default function TradePage() {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "wss://3xtremes-production.up.railway.app";
     let ws: any = null;
     let reconnectTimeout: any;
+    let lastClose = 1.23456;
 
     function connect() {
       console.log("Connecting to WebSocket:", wsUrl);
@@ -315,40 +316,46 @@ export default function TradePage() {
       ws.onmessage = (event: any) => {
         try {
           const msg = JSON.parse(event.data);
-          
-          if (msg.type === "CANDLE") {
-            const price = Number(msg.close) / 1e5;
-            const isNewRound = msg.second === 0;
 
-            // Sync countdown directly with server second ticks
+          if (msg.type === "ROUND_START") {
+            // Reset candles for new round, start fresh
+            const startPrice = Number(msg.startPrice) / 1e5;
+            lastClose = startPrice;
+            setCountdown(60);
+            setCandles([{
+              time: Math.floor(Date.now() / 1000),
+              open: startPrice,
+              high: startPrice,
+              low: startPrice,
+              close: startPrice,
+              volume: 0
+            }]);
+
+          } else if (msg.type === "CANDLE") {
+            // Each CANDLE = 1 new bar (1s timeframe)
+            const open  = Number(msg.open)  / 1e5;
+            const high  = Number(msg.high)  / 1e5;
+            const low   = Number(msg.low)   / 1e5;
+            const close = Number(msg.close) / 1e5;
+
+            lastClose = close;
+
+            // Sync countdown from server tick
             setCountdown(Math.max(0, 60 - msg.second));
 
+            const newCandle: Candle = {
+              time: Math.floor(Date.now() / 1000) - (59 - msg.second), // preserve order even on reconnect
+              open,
+              high,
+              low,
+              close,
+              volume: Math.floor(Math.random() * 80000 + 20000)
+            };
+
             setCandles(prev => {
-              const last = prev[prev.length - 1];
-              const now = Math.floor(Date.now() / 1000);
-              
-              if (isNewRound || !last) {
-                const newCandle: Candle = {
-                  time: now,
-                  open: price,
-                  high: price,
-                  low: price,
-                  close: price,
-                  volume: Math.floor(Math.random() * 80000 + 20000)
-                };
-                return [...prev.slice(-149), newCandle];
-              } else {
-                const updated = {
-                  ...last,
-                  close: price,
-                  high: Math.max(last.high, price),
-                  low: Math.min(last.low, price)
-                };
-                return [...prev.slice(0, -1), updated];
-              }
+              // Always push new candle, keep last 150
+              return [...prev.slice(-149), newCandle];
             });
-          } else if (msg.type === "ROUND_START") {
-            setCountdown(60);
           }
         } catch (e) {
           console.error("Error parsing WS message:", e);
@@ -360,7 +367,7 @@ export default function TradePage() {
       };
 
       ws.onclose = () => {
-        console.log("WebSocket disconnected. Retrying connection in 3s...");
+        console.log("WebSocket disconnected. Retrying in 3s...");
         reconnectTimeout = setTimeout(connect, 3000);
       };
     }
