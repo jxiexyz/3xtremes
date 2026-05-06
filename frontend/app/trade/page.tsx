@@ -187,16 +187,30 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
 
     // Add new lines for each active position
     positions.forEach(p => {
-      const price = Number(p.entryPrice) / 1e5;
-      const line = seriesRef.current.createPriceLine({
-        price,
+      const entry = Number(p.entryPrice) / 1e5;
+      const liq = Number(p.liquidationPrice) / 1e5;
+
+      // Entry Line
+      const entryLine = seriesRef.current.createPriceLine({
+        price: entry,
         color: p.isLong ? '#10b981' : '#ef4444',
         lineWidth: 1,
         lineStyle: 2, // Dashed
         axisLabelVisible: true,
-        title: `${p.isLong ? 'L' : 'S'} ${Number(p.leverage)}x`,
+        title: `${p.isLong ? 'L' : 'S'} Entry`,
       });
-      priceLinesRef.current.push(line);
+      priceLinesRef.current.push(entryLine);
+
+      // Liquidation Line (Orange/White)
+      const liqLine = seriesRef.current.createPriceLine({
+        price: liq,
+        color: '#f97316', 
+        lineWidth: 1,
+        lineStyle: 3, // Dotted
+        axisLabelVisible: true,
+        title: `LIQ`,
+      });
+      priceLinesRef.current.push(liqLine);
     });
   }, [positions, isCandle]);
 
