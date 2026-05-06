@@ -791,60 +791,14 @@ export default function TradePage() {
           </div>
 
           <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.runCard}`}>
-            <div className={styles.cardTitle}>Active Positions</div>
+            <div className={styles.cardTitle}>Summary</div>
             <table className={styles.tbl}>
               <thead>
-                <tr><th>Side/Entry</th><th>PnL (USCC)</th><th style={{ textAlign: 'right' }}>Action</th></tr>
+                <tr><th>Metric</th><th style={{ textAlign: 'right' }}>Value</th></tr>
               </thead>
               <tbody>
-                {isLoading ? (
-                  Array.from({ length: 3 }).map((_, i) => (
-                    <tr key={i}>
-                      <td><SkeletonLine width="60px" height="12px" /></td>
-                      <td><SkeletonLine width="80px" height="12px" /></td>
-                      <td style={{ textAlign: 'right' }}><SkeletonLine width="50px" height="12px" className="ml-auto" /></td>
-                    </tr>
-                  ))
-                ) : openPositions.length > 0 ? (
-                  openPositions.map((p: any, i: number) => {
-                    const pnl = (pnlsRaw as any)?.[i]?.result ? BigInt((pnlsRaw as any)[i].result) : 0n;
-                    const pnlFormatted = (Number(pnl) / 1e6).toFixed(2);
-                    const isPnlPositive = pnl >= 0n;
-
-                    return (
-                      <tr key={i}>
-                        <td style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                          <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 10 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
-                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{fmtPrice(p.entryPrice)}</span>
-                        </td>
-                        <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', fontWeight: 700, fontSize: 14 }}>
-                          {isPnlPositive ? '+' : ''}{pnlFormatted}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button 
-                            className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
-                            onClick={() => {
-                              writeContract({
-                                address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
-                                abi: POSITION_MANAGER_ABI,
-                                functionName: 'closePosition',
-                                args: [p.positionId],
-                              });
-                            }}
-                          >
-                            Close
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={3}>
-                      <EmptyState icon={LayoutGrid} title="No Active Positions" desc="Your open positions will appear here once executed." />
-                    </td>
-                  </tr>
-                )}
+                <tr><td>Open Positions</td><td style={{ textAlign: 'right' }}>{openPositions.length}</td></tr>
+                <tr><td>Total Margin</td><td style={{ textAlign: 'right' }}>{openPositions.reduce((acc: number, p: any) => acc + Number(p.margin) / 1e6, 0).toFixed(2)} USCC</td></tr>
               </tbody>
             </table>
           </div>
@@ -853,48 +807,52 @@ export default function TradePage() {
             <div className={styles.cardTitle}>Positions</div>
             <div className={styles.obWrap}>
               {isLoading ? (
-                 <div className="flex w-full gap-4 opacity-50 px-2 py-4">
-                   <div className="flex-1 flex flex-col gap-3">
-                     {Array.from({ length: 4 }).map((_, i) => <SkeletonLine key={i} />)}
-                   </div>
-                   <div className="w-[1px] bg-white/[0.05]" />
-                   <div className="flex-1 flex flex-col gap-3">
-                     {Array.from({ length: 4 }).map((_, i) => <SkeletonLine key={i} />)}
-                   </div>
-                 </div>
-              ) : OB_BIDS.length > 0 || OB_ASKS.length > 0 ? (
-                <>
-                  <div className={styles.obSide}>
-                    <table className={styles.tbl}>
-                      <thead><tr><th>Price</th><th>Size (USCC)</th></tr></thead>
-                      <tbody>
-                        {OB_BIDS.map((r, i) => (
-                          <tr key={i}>
-                            <td style={{ color: 'var(--blue)', background: `linear-gradient(to left, rgba(59,130,246,0.1) ${r.w}, transparent ${r.w})` }}>{r.p}</td>
-                            <td>{r.s}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="flex flex-col gap-3 pt-2 w-full px-4">
+                    {Array.from({ length: 3 }).map((_, i) => <SkeletonLine key={i} height="40px" />)}
                   </div>
-                  <div style={{ width: 1, background: 'var(--border)', flexShrink: 0 }} />
-                  <div className={styles.obSide}>
-                    <table className={styles.tbl}>
-                      <thead><tr><th>Price</th><th style={{ textAlign: 'right' }}>Size (USCC)</th></tr></thead>
-                      <tbody>
-                        {OB_ASKS.map((r, i) => (
-                          <tr key={i}>
-                            <td style={{ color: 'var(--red)', background: `linear-gradient(to right, rgba(255,59,48,0.1) ${r.w}, transparent ${r.w})` }}>{r.p}</td>
-                            <td style={{ textAlign: 'right' }}>{r.s}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
+              ) : openPositions.length > 0 ? (
+                <table className={styles.tbl}>
+                  <thead>
+                    <tr><th>Side/Entry</th><th>PnL (USCC)</th><th style={{ textAlign: 'right' }}>Action</th></tr>
+                  </thead>
+                  <tbody>
+                    {openPositions.map((p: any, i: number) => {
+                      const pnl = (pnlsRaw as any)?.[i]?.result ? BigInt((pnlsRaw as any)[i].result) : 0n;
+                      const pnlFormatted = (Number(pnl) / 1e6).toFixed(2);
+                      const isPnlPositive = pnl >= 0n;
+
+                      return (
+                        <tr key={i}>
+                          <td style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 10 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
+                            <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{fmtPrice(p.entryPrice)}</span>
+                          </td>
+                          <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', fontWeight: 700, fontSize: 14 }}>
+                            {isPnlPositive ? '+' : ''}{pnlFormatted}
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button 
+                              className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
+                              onClick={() => {
+                                writeContract({
+                                  address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
+                                  abi: POSITION_MANAGER_ABI,
+                                  functionName: 'closePosition',
+                                  args: [p.positionId],
+                                });
+                              }}
+                            >
+                              Close
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               ) : (
                 <div className="w-full h-full">
-                  <EmptyState icon={Wallet} title="Orderbook Empty" desc="Connect your wallet to start seeing real-time liquidity." />
+                  <EmptyState icon={Wallet} title="No Active Positions" desc="Your open positions will appear here once executed." />
                 </div>
               )}
             </div>
