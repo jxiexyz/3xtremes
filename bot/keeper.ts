@@ -332,12 +332,11 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
 }
 
 async function settle(roundId: number, finalPrice: number) {
-  log(`🔔 settle() called | isSettling=${isSettling}`);
   if (isSettling) return;
   isSettling = true;
   stopLoop();
 
-  log(`🏁 Settling round #${roundId} at price ${formatPrice(BigInt(finalPrice))}...`);
+  log(`🏁 Settling round #${roundId} at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
 
   broadcast({ type: "ROUND_SETTLING", roundId, finalPrice });
 
@@ -348,7 +347,7 @@ async function settle(roundId: number, finalPrice: number) {
         address: ROUND_ENGINE_ADDRESS,
         abi: ROUND_ENGINE_ABI,
         functionName: "settleRound",
-        args: [BigInt(finalPrice)],
+        args: [BigInt(Math.floor(finalPrice))],
       })
     );
 
@@ -389,7 +388,7 @@ async function updatePriceOnChain(price: number) {
       address: ROUND_ENGINE_ADDRESS,
       abi: ROUND_ENGINE_ABI,
       functionName: "updatePrice",
-      args: [BigInt(price)],
+      args: [BigInt(Math.floor(price))],
     });
     // Silent update, no need to log every 2s unless debugging
   } catch (err: any) {
