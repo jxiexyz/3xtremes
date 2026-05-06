@@ -488,15 +488,20 @@ export default function TradePage() {
   const isOrderDisabled = isInvalidMargin || isExceedsBalance
 
   // Auto-Liquidation Trigger (Frontend Safety Net)
+  // Sensitive to "wicks" (High/Low) to ensure flash-crashes are caught
   useEffect(() => {
-    if (!address || openPositions.length === 0 || cur === 0) return;
+    if (!address || openPositions.length === 0 || candles.length === 0) return;
+
+    const lastCandle = candles[candles.length - 1];
+    if (!lastCandle) return;
 
     openPositions.forEach(p => {
       const liqPrice = Number(p.liquidationPrice) / 1e5;
-      const isLiquidatable = p.isLong ? (cur <= liqPrice) : (cur >= liqPrice);
+      // Check if the candle's range (Low for Long, High for Short) hit the Liq price
+      const hitOnWick = p.isLong ? (lastCandle.low <= liqPrice) : (lastCandle.high >= liqPrice);
       
-      if (isLiquidatable) {
-        console.log(`💀 Auto-liquidating position #${p.positionId}...`);
+      if (hitOnWick) {
+        console.log(`💀 Wick hit Liquidation! Triggering # ${p.positionId}...`);
         writeContract({
           address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
           abi: POSITION_MANAGER_ABI,
@@ -505,7 +510,7 @@ export default function TradePage() {
         });
       }
     });
-  }, [cur, openPositions, address]);
+  }, [candles, openPositions, address]);
 
 
 
