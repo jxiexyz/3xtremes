@@ -116,32 +116,44 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
     if (seriesRef.current) {
       try { chartRef.current.removeSeries(seriesRef.current); } catch (e) {}
     }
+
+    const validData = data
+      .filter(d => d && typeof d.time === 'number' && !isNaN(d.time))
+      .filter((v, i, a) => i === 0 || v.time > a[i - 1].time);
+
     let series;
     if (isCandle) {
       series = chartRef.current.addSeries(CandlestickSeries, {
         upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
         wickUpColor: '#10b981', wickDownColor: '#ef4444',
       });
-      series.setData(data as any);
+      if (validData.length > 0) series.setData(validData as any);
     } else {
       series = chartRef.current.addSeries(LineSeries, {
         color: '#10b981', lineWidth: 2, crosshairMarkerVisible: true, crosshairMarkerRadius: 4,
       });
-      series.setData(data.map((d: any) => ({ time: d.time, value: d.close })) as any);
+      if (validData.length > 0) {
+        series.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
+      }
     }
     seriesRef.current = series;
   }, [isCandle]);
 
   useEffect(() => {
     if (seriesRef.current && data.length > 0) {
-      if (isCandle) {
-        seriesRef.current.setData(data as any);
-      } else {
-        seriesRef.current.setData(data.map((d: any) => ({ time: d.time, value: d.close })) as any);
-      }
-      // Auto-scroll to latest candle
-      if (chartRef.current) {
-        chartRef.current.timeScale().scrollToRealTime();
+      const validData = data
+        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time))
+        .filter((v, i, a) => i === 0 || v.time > a[i - 1].time);
+
+      if (validData.length > 0) {
+        if (isCandle) {
+          seriesRef.current.setData(validData as any);
+        } else {
+          seriesRef.current.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
+        }
+        if (chartRef.current) {
+          chartRef.current.timeScale().scrollToRealTime();
+        }
       }
     }
   }, [data, isCandle]);
