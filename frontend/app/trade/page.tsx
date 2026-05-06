@@ -320,12 +320,28 @@ export default function TradePage() {
         try {
           const msg = JSON.parse(event.data);
 
-          if (msg.type === "ROUND_START") {
-            // Record exact base time for this round
+          if (msg.type === "HISTORY") {
+            const historyCandles = msg.history.map((c: any) => {
+              const p = Number(c.close) / 1e5;
+              // We need a stable base for history too
+              if (roundBaseTimeRef.current === 0) {
+                roundBaseTimeRef.current = Math.floor(Date.now() / 1000) - c.second;
+              }
+              return {
+                time: roundBaseTimeRef.current + c.second,
+                open: Number(c.open) / 1e5,
+                high: Number(c.high) / 1e5,
+                low: Number(c.low) / 1e5,
+                close: p,
+                volume: Math.floor(Math.random() * 80000 + 20000)
+              };
+            });
+            setCandles(historyCandles);
+
+          } else if (msg.type === "ROUND_START") {
+            // No longer resetting candles to [] to preserve history view
             roundBaseTimeRef.current = Math.floor(Date.now() / 1000);
-            const startPrice = Number(msg.startPrice) / 1e5;
             setCountdown(60);
-            setCandles([]);
 
           } else if (msg.type === "CANDLE") {
             const open  = Number(msg.open)  / 1e5;
@@ -353,7 +369,17 @@ export default function TradePage() {
               volume: Math.floor(Math.random() * 80000 + 20000)
             };
 
-            setCandles(prev => [...prev.slice(-149), newCandle]);
+            setCandles(prev => {
+              const last = prev[prev.length - 1];
+              if (last && last.time === time) {
+                // Update existing candle to prevent duplicate timestamps
+                const updated = [...prev];
+                updated[updated.length - 1] = newCandle;
+                return updated;
+              }
+              // Push new candle
+              return [...prev.slice(-149), newCandle];
+            });
           }
         } catch (e) {
           console.error("Error parsing WS message:", e);
