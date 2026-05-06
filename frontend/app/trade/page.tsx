@@ -287,9 +287,10 @@ export default function TradePage() {
   const openPositions = allPositions.filter((p: any) => p.isOpen)
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
-  const [candles, setCandles] = useState<Candle[]>(() => seedCandles(150))
+  const [candles, setCandles] = useState<Candle[]>([])
   const [isCandle, setIsCandle] = useState(true)
   const [countdown, setCountdown] = useState(60)
+  const roundBaseTimeRef = useRef<number>(0)
 
   // UX States
   const [isLoading, setIsLoading] = useState(true)
@@ -306,7 +307,6 @@ export default function TradePage() {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "wss://3xtremes-production.up.railway.app";
     let ws: any = null;
     let reconnectTimeout: any;
-    let lastClose = 1.23456;
 
     function connect() {
       console.log("Connecting to WebSocket:", wsUrl);
@@ -321,33 +321,31 @@ export default function TradePage() {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "ROUND_START") {
-            // Reset candles for new round, start fresh
+            // Record exact base time for this round
+            roundBaseTimeRef.current = Math.floor(Date.now() / 1000);
             const startPrice = Number(msg.startPrice) / 1e5;
-            lastClose = startPrice;
             setCountdown(60);
-            setCandles([{
-              time: Math.floor(Date.now() / 1000),
-              open: startPrice,
-              high: startPrice,
-              low: startPrice,
-              close: startPrice,
-              volume: 0
-            }]);
+            setCandles([]);
 
           } else if (msg.type === "CANDLE") {
-            // Each CANDLE = 1 new bar (1s timeframe)
             const open  = Number(msg.open)  / 1e5;
             const high  = Number(msg.high)  / 1e5;
             const low   = Number(msg.low)   / 1e5;
             const close = Number(msg.close) / 1e5;
+            const second: number = msg.second;
 
-            lastClose = close;
+            // If mid-round reconnect, estimate base time from current second
+            if (roundBaseTimeRef.current === 0) {
+              roundBaseTimeRef.current = Math.floor(Date.now() / 1000) - second;
+            }
 
-            // Sync countdown from server tick
-            setCountdown(Math.max(0, 60 - msg.second));
+            // Strictly ascending: baseTime + second guarantees unique timestamps
+            const time = roundBaseTimeRef.current + second;
+
+            setCountdown(Math.max(0, 59 - second));
 
             const newCandle: Candle = {
-              time: Math.floor(Date.now() / 1000) - (59 - msg.second), // preserve order even on reconnect
+              time,
               open,
               high,
               low,
@@ -355,10 +353,7 @@ export default function TradePage() {
               volume: Math.floor(Math.random() * 80000 + 20000)
             };
 
-            setCandles(prev => {
-              // Always push new candle, keep last 150
-              return [...prev.slice(-149), newCandle];
-            });
+            setCandles(prev => [...prev.slice(-149), newCandle]);
           }
         } catch (e) {
           console.error("Error parsing WS message:", e);
