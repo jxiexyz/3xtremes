@@ -56,11 +56,12 @@ function seedCandles(n: number): Candle[] {
   return list
 }
 
-function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean }) {
+function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle: boolean, positions: any[] }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<any>(null);
+  const priceLinesRef = useRef<any[]>([]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -174,6 +175,30 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
       }
     }
   }, [data, isCandle]);
+
+  useEffect(() => {
+    if (!seriesRef.current) return;
+    
+    // Clear old lines
+    priceLinesRef.current.forEach(l => {
+      try { seriesRef.current.removePriceLine(l); } catch (e) {}
+    });
+    priceLinesRef.current = [];
+
+    // Add new lines for each active position
+    positions.forEach(p => {
+      const price = Number(p.entryPrice) / 1e5;
+      const line = seriesRef.current.createPriceLine({
+        price,
+        color: p.isLong ? '#10b981' : '#ef4444',
+        lineWidth: 1,
+        lineStyle: 2, // Dashed
+        axisLabelVisible: true,
+        title: `${p.isLong ? 'L' : 'S'} ${Number(p.leverage)}x`,
+      });
+      priceLinesRef.current.push(line);
+    });
+  }, [positions, isCandle]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -577,7 +602,7 @@ export default function TradePage() {
                 </div>
               ) : (
                 <>
-                  <TradingChart data={candles} isCandle={isCandle} />
+                  <TradingChart data={candles} isCandle={isCandle} positions={openPositions} />
                   
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
