@@ -1,4 +1,7 @@
 {
+  "name": "3xtremes-bots",
+  "version": "1.0.0",
+  "main": "dist/bot/keeper.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/bot/keeper.js",
