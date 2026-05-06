@@ -293,6 +293,11 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     candleHistory.push(candleMsg);
     if (candleHistory.length > 200) candleHistory.shift();
 
+    // Update price on-chain every 2 seconds for high accuracy
+    if (candle.second % 2 === 0) {
+      updatePriceOnChain(candle.close);
+    }
+
     broadcast(candleMsg);
 
     if (!isLockWindow) {
@@ -358,6 +363,22 @@ async function settle(roundId: number, finalPrice: number) {
 
   isSettling = false;
   setTimeout(startRound, 2000);
+}
+
+async function updatePriceOnChain(price: number) {
+  if (isSettling) return;
+  
+  try {
+    const hash = await walletClient.writeContract({
+      address: ROUND_ENGINE_ADDRESS,
+      abi: ROUND_ENGINE_ABI,
+      functionName: "updatePrice",
+      args: [BigInt(price)],
+    });
+    // Silent update, no need to log every 2s unless debugging
+  } catch (err: any) {
+    // log(`⚠️ Price update failed: ${err.message}`);
+  }
 }
 
 function stopLoop() {
