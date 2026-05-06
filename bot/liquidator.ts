@@ -18,6 +18,7 @@ const POSITION_MANAGER_ABI = parseAbi([
   "function liquidatePosition(uint256 positionId) external",
   "function checkLiquidation(uint256 positionId) external view returns (bool)",
   "event PositionOpened(uint256 indexed positionId, address indexed trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice)",
+  "event PositionClosed(uint256 indexed positionId, address indexed trader, uint256 exitPrice, int256 pnl, uint256 closeTimestamp)",
   "event PositionLiquidated(uint256 indexed positionId, address indexed trader, address indexed liquidator, uint256 liquidationPrice, uint256 marginLost)",
 ]);
 
@@ -59,69 +60,41 @@ function formatPrice(raw: bigint): string {
 // ─── Load Existing Open Positions on Startup ─────────────────────────────────
 
 async function loadExistingPositions() {
-  log("📂 Loading existing open positions from chain...");
+  log("📂 Loading existing open positions from chain (scanning last 50k blocks)...");
   try {
-    const logs = await publicClient.getLogs({
-      address: POSITION_MANAGER_ADDRESS,
-      event: {
-        type: "event",
-        name: "PositionOpened",
-        inputs: [
-          { indexed: true,  name: "positionId",      type: "uint256" },
-          { indexed: true,  name: "trader",           type: "address" },
-          { indexed: false, name: "roundId",          type: "uint256" },
-          { indexed: false, name: "isLong",           type: "bool"    },
-          { indexed: false, name: "entryPrice",       type: "uint256" },
-          { indexed: false, name: "margin",           type: "uint256" },
-          { indexed: false, name: "leverage",         type: "uint256" },
-          { indexed: false, name: "size",             type: "uint256" },
-          { indexed: false, name: "liquidationPrice", type: "uint256" },
-        ],
-      },
-      fromBlock: 0n,
-    });
+    const currentBlock = await publicClient.getBlockNumber();
+    const fromBlock = currentBlock > 50000n ? currentBlock - 50000n : 0n;
 
-    let loaded = 0;
-    for (const l of logs) {
+    const [opened, closed, liquidated] = await Promise.all([
+      publicClient.getLogs({ address: POSITION_MANAGER_ADDRESS, event: parseAbi(["event PositionOpened(uint256 indexed positionId, address indexed trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice)"])[0], fromBlock }),
+      publicClient.getLogs({ address: POSITION_MANAGER_ADDRESS, event: parseAbi(["event PositionClosed(uint256 indexed positionId, address indexed trader, uint256 exitPrice, int256 pnl, uint256 closeTimestamp)"])[0], fromBlock }),
+      publicClient.getLogs({ address: POSITION_MANAGER_ADDRESS, event: parseAbi(["event PositionLiquidated(uint256 indexed positionId, address indexed trader, address indexed liquidator, uint256 liquidationPrice, uint256 marginLost)"])[0], fromBlock })
+    ]);
+
+    for (const l of opened) {
       const args = (l as any).args;
       if (!args) continue;
-      const id = args.positionId.toString();
-      // Only add if not already in cache (real-time events may have added it)
-      if (!openPositions.has(id)) {
-        openPositions.set(id, {
-          positionId: args.positionId,
-          trader: args.trader,
-          isLong: args.isLong,
-          liquidationPrice: args.liquidationPrice,
-        });
-        loaded++;
-      }
+      openPositions.set(args.positionId.toString(), {
+        positionId: args.positionId,
+        trader: args.trader,
+        isLong: args.isLong,
+        liquidationPrice: args.liquidationPrice,
+      });
     }
 
-    // Remove already-liquidated positions
-    const liquidatedLogs = await publicClient.getLogs({
-      address: POSITION_MANAGER_ADDRESS,
-      event: {
-        type: "event",
-        name: "PositionLiquidated",
-        inputs: [
-          { indexed: true, name: "positionId", type: "uint256" },
-          { indexed: true, name: "trader",     type: "address" },
-          { indexed: true, name: "liquidator", type: "address" },
-          { indexed: false, name: "liquidationPrice", type: "uint256" },
-          { indexed: false, name: "marginLost",       type: "uint256" },
-        ],
-      },
-      fromBlock: 0n,
-    });
-    for (const l of liquidatedLogs) {
+    for (const l of closed) {
       const args = (l as any).args;
       if (args) openPositions.delete(args.positionId.toString());
     }
 
-    log(`✅ Loaded ${loaded} existing positions | ${openPositions.size} still open`);
+    for (const l of liquidated) {
+      const args = (l as any).args;
+      if (args) openPositions.delete(args.positionId.toString());
+    }
+
+    log(`✅ Loaded ${openPositions.size} open positions from chain scan.`);
   } catch (err: any) {
-    log(`⚠️  Could not load existing positions: ${err?.message}. Continuing with real-time only.`);
+    log(`⚠️  Could not load existing positions: ${err?.message}`);
   }
 }
 
@@ -145,10 +118,26 @@ async function watchEvents() {
           isLong: args.isLong,
           liquidationPrice: args.liquidationPrice,
         });
-        log(`➕ Position #${id} | ${args.isLong ? "LONG" : "SHORT"} | liqPrice: ${formatPrice(args.liquidationPrice)} | ${args.trader.slice(0,8)}...`);
+        log(`➕ Position #${id} | ${args.isLong ? "LONG" : "SHORT"} | liqPrice: ${formatPrice(args.liquidationPrice)} | ${args.trader.slice(0, 8)}...`);
       }
     },
     onError: (err) => log(`❌ watchPositionOpened: ${err.message}`),
+  });
+
+  // Position closed manually → remove from cache
+  publicClient.watchContractEvent({
+    address: POSITION_MANAGER_ADDRESS,
+    abi: POSITION_MANAGER_ABI,
+    eventName: "PositionClosed",
+    onLogs: (logs) => {
+      for (const l of logs) {
+        const args = (l as any).args;
+        const id = args.positionId.toString();
+        openPositions.delete(id);
+        log(`➖ Position #${id} closed manually`);
+      }
+    },
+    onError: (err) => log(`❌ watchPositionClosed: ${err.message}`),
   });
 
   // Position liquidated → remove from cache
@@ -171,17 +160,23 @@ async function watchEvents() {
 
 // ─── Liquidation Check ────────────────────────────────────────────────────────
 
-async function checkAndLiquidate(currentPrice: number) {
+async function checkAndLiquidate(high: number, low: number) {
   if (openPositions.size === 0) return;
 
-  const priceBig = BigInt(currentPrice);
+  const hiBig = BigInt(Math.floor(high));
+  const loBig = BigInt(Math.floor(low));
   const toLiquidate: CachedPosition[] = [];
 
   for (const [id, pos] of openPositions) {
     if (liquidating.has(id)) continue;
+    
+    // WICK DETECTION: 
+    // Long is liquidated if LOW hits LiqPrice
+    // Short is liquidated if HIGH hits LiqPrice
     const hit = pos.isLong
-      ? priceBig <= pos.liquidationPrice
-      : priceBig >= pos.liquidationPrice;
+      ? loBig <= pos.liquidationPrice
+      : hiBig >= pos.liquidationPrice;
+
     if (hit) toLiquidate.push(pos);
   }
 
@@ -226,7 +221,7 @@ async function checkAndLiquidate(currentPrice: number) {
       log(`📤 liquidatePosition(#${id}) tx: ${hash}`);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "success") {
-        log(`✅ #${id} liquidated! Reward → ${account.address.slice(0,8)}...`);
+        log(`✅ #${id} liquidated! Reward → ${account.address.slice(0, 8)}...`);
         openPositions.delete(id);
       } else {
         log(`❌ liquidatePosition(#${id}) reverted`);
@@ -253,19 +248,18 @@ function connectToKeeper() {
       switch (msg.type) {
         case "ROUND_START":
           log(`🎰 Round #${msg.roundId} started`);
-          openPositions.clear();
-          liquidating.clear();
+          // DO NOT CLEAR openPositions! They might span across rounds.
           break;
         case "CANDLE":
-          await checkAndLiquidate(msg.price);
+          // Check for liquidations using BOTH High and Low (Wick detection)
+          await checkAndLiquidate(msg.high, msg.low);
           break;
         case "ROUND_SETTLED":
           log(`🏁 Round #${msg.roundId} settled`);
-          openPositions.clear();
-          liquidating.clear();
+          // DO NOT CLEAR openPositions! Let the events (PositionClosed) do the work.
           break;
       }
-    } catch {}
+    } catch { }
   });
 
   ws.on("close", () => {
