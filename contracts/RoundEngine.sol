@@ -186,6 +186,19 @@ contract RoundEngine is Ownable, Pausable, ReentrancyGuard {
     }
 
     /**
+     * @notice Update current price during the round (called by keeper)
+     * @param newPrice The latest candle price
+     */
+    function updatePrice(uint256 newPrice) external onlyKeeper {
+        if (!roundActive) return;
+        currentPrice = newPrice;
+        
+        if (positionManager != address(0)) {
+            IPositionManager(positionManager).onPriceUpdate(currentRoundId, newPrice);
+        }
+    }
+
+    /**
      * @notice Emergency cancel — refunds all open positions
      */
     function cancelRound(string calldata reason) external onlyKeeper nonReentrant {
