@@ -14,7 +14,7 @@ async function main() {
   // 1. Deploy New RoundEngine
   console.log("\n📦 Deploying Upgraded RoundEngine...");
   const RoundEngine = await ethers.getContractFactory("RoundEngine");
-  const roundEngine = await RoundEngine.deploy(VRF_CONSUMER);
+  const roundEngine = await RoundEngine.deploy(VRF_CONSUMER, { gasPrice: ethers.parseUnits("100", "gwei") });
   await roundEngine.waitForDeployment();
   const engineAddr = await roundEngine.getAddress();
   console.log("✅ New RoundEngine:", engineAddr);
@@ -25,7 +25,8 @@ async function main() {
   const positionManager = await PositionManager.deploy(
     CREDIT_VAULT,
     FEE_MANAGER,
-    engineAddr
+    engineAddr,
+    { gasPrice: ethers.parseUnits("100", "gwei") }
   );
   await positionManager.waitForDeployment();
   const pmAddr = await positionManager.getAddress();
@@ -35,26 +36,26 @@ async function main() {
   console.log("\n🔐 Linking contracts...");
   
   // RoundEngine -> PositionManager
-  await roundEngine.setPositionManager(pmAddr);
+  await (await roundEngine.setPositionManager(pmAddr, { gasPrice: ethers.parseUnits("100", "gwei") })).wait();
   console.log("  ✓ Engine linked to PM");
 
   // RoundEngine keeper: deployer (agar bot keeper bisa updatePrice)
-  await roundEngine.setAuthorizedKeeper(deployer.address, true);
+  await (await roundEngine.setAuthorizedKeeper(deployer.address, true, { gasPrice: ethers.parseUnits("100", "gwei") })).wait();
   console.log("  ✓ Keeper authorized");
 
   // CreditVault needs to authorize NEW PositionManager
   const CreditVault = await ethers.getContractAt("CreditVault", CREDIT_VAULT);
-  await CreditVault.setAuthorizedContract(pmAddr, true);
+  await (await CreditVault.setAuthorizedContract(pmAddr, true, { gasPrice: ethers.parseUnits("100", "gwei") })).wait();
   console.log("  ✓ CreditVault authorized new PM");
 
   // FeeManager needs to authorize NEW PositionManager
   const FeeManager = await ethers.getContractAt("FeeManager", FEE_MANAGER);
-  await FeeManager.setAuthorizedCaller(pmAddr, true);
+  await (await FeeManager.setAuthorizedCaller(pmAddr, true, { gasPrice: ethers.parseUnits("100", "gwei") })).wait();
   console.log("  ✓ FeeManager authorized new PM");
 
   // VRFConsumer needs to point to NEW RoundEngine
   const VRFConsumer = await ethers.getContractAt("VRFConsumer", VRF_CONSUMER);
-  await VRFConsumer.setRoundEngine(engineAddr);
+  await (await VRFConsumer.setRoundEngine(engineAddr, { gasPrice: ethers.parseUnits("100", "gwei") })).wait();
   console.log("  ✓ VRFConsumer linked to new Engine");
 
   console.log("\n🎉 REDEPLOY COMPLETE!");
