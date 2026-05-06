@@ -729,7 +729,7 @@ export default function TradePage() {
                 </div>
               </div>
               <input
-                type="range" min={1} max={10000} step={1}
+                type="range" min={10} max={10000} step={1}
                 value={leverage}
                 onChange={e => setLeverage(Number(e.target.value))}
                 className={`${styles.slider} ${leverage >= 5000 ? styles.sliderExtremeRisk : leverage >= 1000 ? styles.sliderHighRisk : ''}`}
