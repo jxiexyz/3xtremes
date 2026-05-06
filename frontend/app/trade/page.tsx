@@ -134,11 +134,14 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
 
   useEffect(() => {
     if (seriesRef.current && data.length > 0) {
-      const last = data[data.length - 1];
       if (isCandle) {
-        seriesRef.current.update(last as any);
+        seriesRef.current.setData(data as any);
       } else {
-        seriesRef.current.update({ time: last.time, value: last.close } as any);
+        seriesRef.current.setData(data.map((d: any) => ({ time: d.time, value: d.close })) as any);
+      }
+      // Auto-scroll to latest candle
+      if (chartRef.current) {
+        chartRef.current.timeScale().scrollToRealTime();
       }
     }
   }, [data, isCandle]);
