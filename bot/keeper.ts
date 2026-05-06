@@ -68,7 +68,15 @@ wss.on("connection", (ws) => {
     }));
   }
 
+  // Heartbeat to keep connection alive
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping();
+    }
+  }, 15000);
+
   ws.on("close", () => {
+    clearInterval(pingInterval);
     wsClients.delete(ws);
     log(`🔌 WS client disconnected (total: ${wsClients.size})`);
   });

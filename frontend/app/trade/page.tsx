@@ -302,6 +302,7 @@ export default function TradePage() {
   const [candles, setCandles] = useState<Candle[]>([])
   const [isCandle, setIsCandle] = useState(true)
   const [countdown, setCountdown] = useState(60)
+  const [roundStatus, setRoundStatus] = useState<string>("Active")
   const roundBaseTimeRef = useRef<number>(0)
 
   // UX States
@@ -342,9 +343,15 @@ export default function TradePage() {
               volume: Math.floor(Math.random() * 80000 + 20000)
             }));
             setCandles(historyCandles);
+            setRoundStatus("Active");
 
+          } else if (msg.type === "ROUND_SETTLING") {
+            setRoundStatus("Settling Round...");
+          } else if (msg.type === "ROUND_SETTLED") {
+            setRoundStatus("Starting Next Round...");
           } else if (msg.type === "ROUND_START") {
             setCountdown(60);
+            setRoundStatus("Active");
 
           } else if (msg.type === "CANDLE") {
             const open  = Number(msg.open)  / 1e5;
@@ -659,13 +666,22 @@ export default function TradePage() {
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Round Closes In</span>
-                <span style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: countdown <= 10 ? '#ef4444' : countdown <= 20 ? '#f59e0b' : '#10b981',
-                  transition: 'color 0.3s',
-                }}>00:{String(countdown).padStart(2, '0')}</span>
+                {roundStatus !== "Active" ? (
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 uppercase animate-pulse">
+                    <Loader2 size={12} className="animate-spin" />
+                    {roundStatus}
+                  </span>
+                ) : (
+                  <span style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: countdown <= 10 ? '#ff3b30' : '#00e676',
+                    textShadow: countdown <= 10 ? '0 0 12px rgba(255,59,48,0.4)' : 'none'
+                  }}>
+                    {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}
+                  </span>
+                )}
               </div>
               <div style={{ width: '100%', height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
                 <div style={{
