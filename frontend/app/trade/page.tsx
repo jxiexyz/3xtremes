@@ -72,8 +72,14 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
         vertLine: { width: 1, color: 'rgba(255,255,255,0.3)', style: 3, labelBackgroundColor: '#1e293b' },
         horzLine: { width: 1, color: 'rgba(255,255,255,0.3)', style: 3, labelBackgroundColor: '#1e293b' },
       },
-      timeScale: { borderColor: 'rgba(255, 255, 255, 0.1)', timeVisible: true },
-      rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)' },
+      timeScale: { 
+        borderColor: 'rgba(255, 255, 255, 0.1)', 
+        timeVisible: true,
+        rightOffset: 12, // Provides space on the right like TradingView
+        barSpacing: 10,
+        minBarSpacing: 0.5,
+      },
+      rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)', autoScale: true },
       autoSize: true,
     });
     chartRef.current = chart;
@@ -150,9 +156,6 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
           seriesRef.current.setData(validData as any);
         } else {
           seriesRef.current.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
-        }
-        if (chartRef.current) {
-          chartRef.current.timeScale().scrollToRealTime();
         }
       }
     }
