@@ -35,11 +35,15 @@ const ROUND_ENGINE_ABI = parseAbi([
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const ROUND_ENGINE_ADDRESS = process.env.ROUND_ENGINE_ADDRESS as `0x${string}`;
-const PRIVATE_KEY = process.env.KEEPER_PRIVATE_KEY as `0x${string}`;
+let rawKey = (process.env.KEEPER_PRIVATE_KEY || "").replace(/['"]/g, "").trim();
+if (rawKey && !rawKey.startsWith("0x")) {
+  rawKey = `0x${rawKey}`;
+}
+const PRIVATE_KEY = rawKey as `0x${string}`;
 const WS_PORT = parseInt(process.env.PORT || process.env.WS_PORT || "8080");
 
-if (!ROUND_ENGINE_ADDRESS || !PRIVATE_KEY) {
-  console.error("❌ Missing ROUND_ENGINE_ADDRESS or KEEPER_PRIVATE_KEY in .env");
+if (!ROUND_ENGINE_ADDRESS || !PRIVATE_KEY || PRIVATE_KEY === "0x") {
+  console.error("❌ Missing ROUND_ENGINE_ADDRESS or KEEPER_PRIVATE_KEY in environment");
   process.exit(1);
 }
 
