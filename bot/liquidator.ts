@@ -182,7 +182,7 @@ async function checkAndLiquidate(high: number, low: number) {
 
   if (toLiquidate.length === 0) return;
 
-  log(`🎯 ${toLiquidate.length} position(s) hit liq threshold at price ${formatPrice(priceBig)}`);
+  log(`🎯 ${toLiquidate.length} position(s) hit liq threshold at price ${formatPrice(hiBig)}`);
 
   await Promise.all(toLiquidate.map(async (pos) => {
     const id = pos.positionId.toString();

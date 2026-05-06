@@ -22,6 +22,7 @@ const ROUND_ENGINE_ABI = parseAbi([
   "function startRound() external",
   "function settleRound(uint256 finalPrice) external",
   "function cancelRound(string reason) external",
+  "function updatePrice(uint256 newPrice) external",
   "function currentRoundId() external view returns (uint256)",
   "function roundActive() external view returns (bool)",
   "function getSecondsRemaining() external view returns (uint256)",
