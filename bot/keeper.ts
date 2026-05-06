@@ -104,7 +104,7 @@ function log(msg: string) {
 }
 
 function formatPrice(raw: unknown): string {
-  return (Number(raw as bigint) / 100000).toFixed(5);
+  return (Number(raw as bigint) / 1000000).toFixed(6);
 }
 
 async function sendTx(label: string, fn: () => Promise<`0x${string}`>): Promise<boolean> {
@@ -135,7 +135,7 @@ async function sendTx(label: string, fn: () => Promise<`0x${string}`>): Promise<
 
 const THRESHOLD_DOWN = 450_000n;
 const THRESHOLD_SIDEWAYS = 550_000n;
-const MOVE_DENOMINATOR = 100_000n;
+const MOVE_DENOMINATOR = 1000000n;
 
 function computeRandomness(seed: bigint, second: number): bigint {
   // Derive per-second randomness from seed deterministically

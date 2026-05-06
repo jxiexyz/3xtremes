@@ -35,7 +35,7 @@ interface Candle {
   time: number; open: number; close: number; high: number; low: number; volume: number
 }
 
-const fmtPrice = (r: bigint) => (Number(r) / 1e5).toFixed(5)
+const fmtPrice = (r: bigint) => (Number(r) / 1e6).toFixed(6)
 const fmtUscc  = (r: bigint) => (Number(r) / 1e6).toFixed(3)
 const fmtTime  = (ts: bigint) =>
   new Date(Number(ts) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -187,8 +187,8 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
 
     // Add new lines for each active position
     positions.forEach(p => {
-      const entry = Number(p.entryPrice) / 1e5;
-      const liq = Number(p.liquidationPrice) / 1e5;
+      const entry = Number(p.entryPrice) / 1e6;
+      const liq = Number(p.liquidationPrice) / 1e6;
 
       // Entry Line
       const entryLine = seriesRef.current.createPriceLine({
@@ -392,10 +392,10 @@ export default function TradePage() {
           if (msg.type === "HISTORY") {
             const historyCandles = msg.history.map((c: any) => ({
               time: c.time,
-              open: Number(c.open) / 1e5,
-              high: Number(c.high) / 1e5,
-              low: Number(c.low) / 1e5,
-              close: Number(c.close) / 1e5,
+              open: Number(c.open) / 1e6,
+              high: Number(c.high) / 1e6,
+              low: Number(c.low) / 1e6,
+              close: Number(c.close) / 1e6,
               volume: Math.floor(Math.random() * 80000 + 20000)
             }));
             setCandles(historyCandles);
@@ -410,10 +410,10 @@ export default function TradePage() {
             setRoundStatus("Active");
 
           } else if (msg.type === "CANDLE") {
-            const open  = Number(msg.open)  / 1e5;
-            const high  = Number(msg.high)  / 1e5;
-            const low   = Number(msg.low)   / 1e5;
-            const close = Number(msg.close) / 1e5;
+            const open  = Number(msg.open)  / 1e6;
+            const high  = Number(msg.high)  / 1e6;
+            const low   = Number(msg.low)   / 1e6;
+            const close = Number(msg.close) / 1e6;
             const time  = Number(msg.time);
 
             setCountdown(Math.max(0, 59 - msg.second));
@@ -886,7 +886,7 @@ export default function TradePage() {
                       const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
                       
                       // Calculate LIVE frontend PnL for smoothness
-                      const entry = Number(p.entryPrice) / 1e5;
+                      const entry = Number(p.entryPrice) / 1e6;
                       const margin = Number(p.margin) / 1e6;
                       const lev = Number(p.leverage);
                       
