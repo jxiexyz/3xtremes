@@ -896,30 +896,52 @@ export default function TradePage() {
                       // Use livePnl for display, fall back to contract if something is weird
                       const displayPnl = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
                       const isPnlPositive = displayPnl >= 0;
+                      
+                      const liqPrice = Number(p.liquidationPrice) / 1e5;
+                      const isUnderwater = p.isLong ? (cur <= liqPrice) : (cur >= liqPrice);
 
                       return (
-                        <tr key={p.positionId.toString()}>
+                        <tr key={p.positionId.toString()} style={isUnderwater ? { background: 'rgba(239, 68, 68, 0.05)' } : {}}>
                           <td style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 10 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
+                            <div className="flex items-center gap-2">
+                              <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 10 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
+                              {isUnderwater && <span className="animate-pulse bg-rose-500 text-white text-[8px] px-1 rounded font-bold">LIQUIDATABLE</span>}
+                            </div>
                             <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{fmtPrice(p.entryPrice)}</span>
                           </td>
                           <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', fontWeight: 700, fontSize: 14 }}>
                             {isPnlPositive ? '+' : ''}{displayPnl.toFixed(2)}
                           </td>
                           <td style={{ textAlign: 'right' }}>
-                            <button 
-                              className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
-                              onClick={() => {
-                                writeContract({
-                                  address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
-                                  abi: POSITION_MANAGER_ABI,
-                                  functionName: 'closePosition',
-                                  args: [p.positionId],
-                                });
-                              }}
-                            >
-                              Close
-                            </button>
+                            {isUnderwater ? (
+                               <button 
+                                 className="bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors shadow-[0_0_15px_rgba(225,29,72,0.4)]"
+                                 onClick={() => {
+                                   writeContract({
+                                     address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
+                                     abi: POSITION_MANAGER_ABI,
+                                     functionName: 'liquidatePosition',
+                                     args: [p.positionId],
+                                   });
+                                 }}
+                               >
+                                 Force Liq
+                               </button>
+                            ) : (
+                               <button 
+                                 className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
+                                 onClick={() => {
+                                   writeContract({
+                                     address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
+                                     abi: POSITION_MANAGER_ABI,
+                                     functionName: 'closePosition',
+                                     args: [p.positionId],
+                                   });
+                                 }}
+                               >
+                                 Close
+                               </button>
+                            )}
                           </td>
                         </tr>
                       );
