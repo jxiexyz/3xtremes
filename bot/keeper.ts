@@ -190,18 +190,28 @@ function computeCandles(seed: bigint, startPrice: number): Candle[] {
   const candles: Candle[] = [];
   let price = startPrice;
 
-  // Determine trend for this round: -25 to +25 bias
-  const trendBias = Number((seed % 51n) - 25n);
+  // Determine trend for this round: -40 to +40 bias (stronger trend)
+  const trendBias = Number((seed % 81n) - 40n);
 
   for (let s = 0; s < 60; s++) {
     const randomness = computeRandomness(seed, s);
     const open = price;
-    const close = calcPriceMove(price, randomness, trendBias);
+    
+    // Create more "Body" by increasing the move range
+    // 10% chance for a "Power Move" (High Volume candle)
+    const isPowerMove = (randomness % 10n) === 0n;
+    const baseVolatility = isPowerMove ? 400 : 120;
+    
+    const move = Number((randomness % BigInt(baseVolatility * 2 + 1)) - BigInt(baseVolatility)) + trendBias;
+    const close = Math.max(1, price + move);
 
-    // Simulate intra-candle high/low (volatile noise)
-    const noise = Math.max(5, Math.floor(price * 0.001));
-    const high = Math.max(open, close) + Math.floor(Number(randomness % BigInt(noise)));
-    const low = Math.max(1, Math.min(open, close) - Math.floor(Number((randomness >> 8n) % BigInt(noise))));
+    // Wicks: high/low should be dynamic but not too messy
+    // High volume candles (power moves) have smaller wicks relative to body
+    const bodySize = Math.abs(close - open);
+    const wickRange = isPowerMove ? Math.floor(bodySize * 0.3) : Math.max(15, Math.floor(bodySize * 0.6));
+    
+    const high = Math.max(open, close) + Math.floor(Number(randomness % BigInt(wickRange + 5)));
+    const low = Math.max(1, Math.min(open, close) - Math.floor(Number((randomness >> 16n) % BigInt(wickRange + 5))));
 
     candles.push({ second: s, open, high, low, close, price: close });
     price = close;
