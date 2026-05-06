@@ -321,26 +321,17 @@ export default function TradePage() {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "HISTORY") {
-            const historyCandles = msg.history.map((c: any) => {
-              const p = Number(c.close) / 1e5;
-              // We need a stable base for history too
-              if (roundBaseTimeRef.current === 0) {
-                roundBaseTimeRef.current = Math.floor(Date.now() / 1000) - c.second;
-              }
-              return {
-                time: roundBaseTimeRef.current + c.second,
-                open: Number(c.open) / 1e5,
-                high: Number(c.high) / 1e5,
-                low: Number(c.low) / 1e5,
-                close: p,
-                volume: Math.floor(Math.random() * 80000 + 20000)
-              };
-            });
+            const historyCandles = msg.history.map((c: any) => ({
+              time: c.time,
+              open: Number(c.open) / 1e5,
+              high: Number(c.high) / 1e5,
+              low: Number(c.low) / 1e5,
+              close: Number(c.close) / 1e5,
+              volume: Math.floor(Math.random() * 80000 + 20000)
+            }));
             setCandles(historyCandles);
 
           } else if (msg.type === "ROUND_START") {
-            // No longer resetting candles to [] to preserve history view
-            roundBaseTimeRef.current = Math.floor(Date.now() / 1000);
             setCountdown(60);
 
           } else if (msg.type === "CANDLE") {
@@ -348,17 +339,9 @@ export default function TradePage() {
             const high  = Number(msg.high)  / 1e5;
             const low   = Number(msg.low)   / 1e5;
             const close = Number(msg.close) / 1e5;
-            const second: number = msg.second;
+            const time  = Number(msg.time);
 
-            // If mid-round reconnect, estimate base time from current second
-            if (roundBaseTimeRef.current === 0) {
-              roundBaseTimeRef.current = Math.floor(Date.now() / 1000) - second;
-            }
-
-            // Strictly ascending: baseTime + second guarantees unique timestamps
-            const time = roundBaseTimeRef.current + second;
-
-            setCountdown(Math.max(0, 59 - second));
+            setCountdown(Math.max(0, 59 - msg.second));
 
             const newCandle: Candle = {
               time,
@@ -372,12 +355,10 @@ export default function TradePage() {
             setCandles(prev => {
               const last = prev[prev.length - 1];
               if (last && last.time === time) {
-                // Update existing candle to prevent duplicate timestamps
                 const updated = [...prev];
                 updated[updated.length - 1] = newCandle;
                 return updated;
               }
-              // Push new candle
               return [...prev.slice(-149), newCandle];
             });
           }
