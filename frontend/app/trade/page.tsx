@@ -841,19 +841,31 @@ export default function TradePage() {
                     <tr><th>Side/Entry</th><th>PnL (USCC)</th><th style={{ textAlign: 'right' }}>Action</th></tr>
                   </thead>
                   <tbody>
-                    {openPositions.map((p: any, i: number) => {
-                      const pnl = (pnlsRaw as any)?.[i]?.result ? BigInt((pnlsRaw as any)[i].result) : 0n;
-                      const pnlFormatted = (Number(pnl) / 1e6).toFixed(2);
-                      const isPnlPositive = pnl >= 0n;
+                    {openPositions.map((p: any) => {
+                      // Find real-time PnL from contract data
+                      const pnlIdx = ids.findIndex(id => id === p.positionId);
+                      const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
+                      
+                      // Calculate LIVE frontend PnL for smoothness
+                      const entry = Number(p.entryPrice) / 1e5;
+                      const margin = Number(p.margin) / 1e6;
+                      const lev = Number(p.leverage);
+                      
+                      const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
+                      const livePnl = (priceDiff / entry) * (margin * lev);
+                      
+                      // Use livePnl for display, fall back to contract if something is weird
+                      const displayPnl = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
+                      const isPnlPositive = displayPnl >= 0;
 
                       return (
-                        <tr key={i}>
+                        <tr key={p.positionId.toString()}>
                           <td style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 10 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
                             <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{fmtPrice(p.entryPrice)}</span>
                           </td>
                           <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', fontWeight: 700, fontSize: 14 }}>
-                            {isPnlPositive ? '+' : ''}{pnlFormatted}
+                            {isPnlPositive ? '+' : ''}{displayPnl.toFixed(2)}
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             <button 
