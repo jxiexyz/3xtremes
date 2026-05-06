@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+ 
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+ 
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+ 
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+ 
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+ 
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+ 
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+ 
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+ 
+    --radius: 1rem;
+
+    /* Trade page tokens */
+    --panel:        rgba(4, 11, 30, 0.85);
+    --border:       rgba(30, 58, 138, 0.4);
+    --border-subtle:rgba(255,255,255,0.05);
+    --blue:         #3b82f6;
+    --blue-dim:     #2563eb;
+    --blue-bg:      rgba(59,130,246,0.12);
+    --blue-glow:    rgba(59,130,246,0.4);
+    --red:          #ff3b30;
+    --red-bg:       rgba(255,59,48,0.12);
+    --muted:        rgba(255,255,255,0.4);
+    --mono:         'JetBrains Mono', monospace;
+  }
+}
+ 
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-[#030614] text-foreground antialiased selection:bg-blue-500/30;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+.glass-panel {
+  @apply relative overflow-hidden bg-[#040b1e]/80 border border-[#1e3a8a]/40 backdrop-blur-xl rounded-[24px];
+  box-shadow: inset 0px 40px 60px -40px rgba(59,130,246,0.4), 0px 10px 30px -10px rgba(0,0,0,0.8);
+}
+
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(96,165,250,0.8), transparent);
+}
+
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-b from-white to-white/60;
+}
+
+.glow-blue {
+  @apply absolute rounded-full blur-[100px] pointer-events-none;
+  background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, rgba(59,130,246,0) 70%);
+}
