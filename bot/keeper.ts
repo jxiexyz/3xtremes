@@ -59,6 +59,15 @@ const wsClients = new Set<WebSocket>();
 wss.on("connection", (ws) => {
   wsClients.add(ws);
   log(`🔌 WS client connected (total: ${wsClients.size})`);
+
+  // Send history on connect
+  if (candleHistory.length > 0) {
+    ws.send(JSON.stringify({
+      type: "HISTORY",
+      history: candleHistory
+    }));
+  }
+
   ws.on("close", () => {
     wsClients.delete(ws);
     log(`🔌 WS client disconnected (total: ${wsClients.size})`);
@@ -78,6 +87,7 @@ let isSettling = false;
 let isStarting = false;
 let candleInterval: ReturnType<typeof setInterval> | null = null;
 let settleTimeout: ReturnType<typeof setTimeout> | null = null;
+let candleHistory: any[] = []; // Stores last 200 candles across rounds
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -249,7 +259,7 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     const candle = candles[idx];
     const isLockWindow = candle.second >= 55;
 
-    broadcast({
+    const candleMsg = {
       type: "CANDLE",
       roundId,
       second: candle.second,
@@ -259,7 +269,13 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
       close: candle.close,
       price: candle.close,
       lockWindow: isLockWindow,
-    });
+    };
+
+    // Save to history
+    candleHistory.push(candleMsg);
+    if (candleHistory.length > 200) candleHistory.shift();
+
+    broadcast(candleMsg);
 
     if (!isLockWindow) {
       log(`💹 second ${candle.second} | price: ${formatPrice(BigInt(candle.close))}`);
