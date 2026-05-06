@@ -754,11 +754,32 @@ export default function TradePage() {
                   if (!address) return setShowConnect(true)
                   if (isOrderDisabled || isTxPending) return
                   setIsTxPending(true)
-                  setTimeout(() => {
-                    setIsTxPending(false)
-                    setTradeSuccess(true)
-                    setTimeout(() => setTradeSuccess(false), 3000)
-                  }, 1500)
+                  
+                  try {
+                    const isLong = side === 'buy';
+                    const margin = BigInt(Math.floor(parseFloat(amount) * 1e6));
+                    const lev = BigInt(leverage);
+                    
+                    writeContract({
+                      address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
+                      abi: POSITION_MANAGER_ABI,
+                      functionName: 'openPosition',
+                      args: [isLong, margin, lev],
+                    }, {
+                      onSuccess: () => {
+                        setIsTxPending(false);
+                        setTradeSuccess(true);
+                        setTimeout(() => setTradeSuccess(false), 3000);
+                      },
+                      onError: (err) => {
+                        console.error("Trade failed:", err);
+                        setIsTxPending(false);
+                      }
+                    });
+                  } catch (e) {
+                    console.error("Trade execution error:", e);
+                    setIsTxPending(false);
+                  }
                 }}
               >
                 {isTxPending ? (
@@ -769,12 +790,11 @@ export default function TradePage() {
             </div>
           </div>
 
-          {/* Running Positions */}
           <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.runCard}`}>
-            <div className={styles.cardTitle}>Summary</div>
+            <div className={styles.cardTitle}>Active Positions</div>
             <table className={styles.tbl}>
               <thead>
-                <tr><th>Entry</th><th>Margin</th><th style={{ textAlign: 'right' }}>Time</th></tr>
+                <tr><th>Side/Entry</th><th>PnL (USCC)</th><th style={{ textAlign: 'right' }}>Action</th></tr>
               </thead>
               <tbody>
                 {isLoading ? (
@@ -785,17 +805,39 @@ export default function TradePage() {
                       <td style={{ textAlign: 'right' }}><SkeletonLine width="50px" height="12px" className="ml-auto" /></td>
                     </tr>
                   ))
-                ) : openPositions.length > 0 || RUN_TRADES.length > 0 ? (
-                  (openPositions.length > 0
-                    ? openPositions.slice(0, 6).map((p: any) => ({ p: fmtPrice(p.entryPrice), a: fmtUscc(p.margin) + ' USCC', t: fmtTime(p.openTimestamp), up: p.isLong }))
-                    : RUN_TRADES
-                  ).map((r: any, i: any) => (
-                    <tr key={i}>
-                      <td style={{ color: r.up ? 'var(--blue)' : 'var(--red)' }}>{r.p}</td>
-                      <td>{r.a}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--muted)' }}>{r.t}</td>
-                    </tr>
-                  ))
+                ) : openPositions.length > 0 ? (
+                  openPositions.map((p: any, i: number) => {
+                    const pnl = (pnlsRaw as any)?.[i]?.result ? BigInt((pnlsRaw as any)[i].result) : 0n;
+                    const pnlFormatted = (Number(pnl) / 1e6).toFixed(2);
+                    const isPnlPositive = pnl >= 0n;
+
+                    return (
+                      <tr key={i}>
+                        <td style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 10 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{fmtPrice(p.entryPrice)}</span>
+                        </td>
+                        <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', fontWeight: 700, fontSize: 14 }}>
+                          {isPnlPositive ? '+' : ''}{pnlFormatted}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <button 
+                            className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
+                            onClick={() => {
+                              writeContract({
+                                address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
+                                abi: POSITION_MANAGER_ABI,
+                                functionName: 'closePosition',
+                                args: [p.positionId],
+                              });
+                            }}
+                          >
+                            Close
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={3}>
