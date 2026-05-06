@@ -814,6 +814,7 @@ export default function TradePage() {
                         ? 'bg-white/[0.03] text-white/30 cursor-not-allowed border border-white/[0.05]'
                         : side === 'buy' ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_20px_rgba(16,185,129,0.25)]' : 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_4px_20px_rgba(244,63,94,0.25)]'
                 }`} 
+                onClick={() => {
                   if (!address) return setShowConnect(true)
                   if (isOrderDisabled) {
                     console.log("Order disabled state:", { isInvalidMargin, isExceedsBalance, marginNum, balance });
