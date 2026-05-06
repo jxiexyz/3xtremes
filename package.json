@@ -1,6 +1,7 @@
 {
   "scripts": {
     "build": "tsc",
+    "start": "node dist/bot/keeper.js",
     "start:keeper": "node dist/bot/keeper.js",
     "start:liquidator": "node dist/bot/liquidator.js"
   },
