@@ -189,39 +189,43 @@ interface Candle {
 function computeCandles(seed: bigint, startPrice: number): Candle[] {
   const candles: Candle[] = [];
   let price = startPrice;
-  let momentum = 0; // Natural flow momentum
 
-  // Global trend for the round: -30 to +30
-  const globalTrend = Number((seed % 61n) - 30n);
+  // Global drift: -15 to +15 (Subtle bias, not a bulldozer)
+  const drift = Number((seed % 31n) - 15n);
 
   for (let s = 0; s < 60; s++) {
     const randomness = computeRandomness(seed, s);
     const open = price;
     
-    // 1. Natural Momentum: Price tends to follow previous direction (smooth flow)
-    const noise = Number((randomness % 101n) - 50n);
-    momentum = (momentum * 0.7) + (noise * 0.3) + globalTrend;
+    // 1. Pure Volatility: High random noise per second
+    const volatility = 150;
+    const noise = Number((randomness % BigInt(volatility * 2 + 1)) - BigInt(volatility));
     
-    // 2. Enforce "High Volume" Body: Ensure move is never too small (No Dojis)
-    let move = momentum;
-    const minMove = 40; // Minimum body size
-    if (Math.abs(move) < minMove) {
-      move = move >= 0 ? minMove : -minMove;
-    }
-
+    // 2. Mean Reversion: If price moves too far from start, pull it back slightly
+    const deviation = price - startPrice;
+    const gravity = Math.floor(deviation * 0.05);
+    
+    // 3. Combine: Noise + subtle drift - gravity
+    const move = noise + drift - gravity;
     const close = Math.max(1, price + move);
 
-    // 3. Proportional Professional Wicks
-    // Wicks should be 20-50% of the body size for a "busy" look
+    // 4. Ensure Visible Body (No Dojis) but color is random based on move
     const bodySize = Math.abs(close - open);
-    const highWick = Math.max(10, Math.floor(bodySize * (0.2 + (Number(randomness % 30n) / 100))));
-    const lowWick = Math.max(10, Math.floor(bodySize * (0.2 + (Number((randomness >> 16n) % 30n) / 100))));
-    
-    const high = Math.max(open, close) + highWick;
-    const low = Math.max(1, Math.min(open, close) - lowWick);
+    const minBody = 25;
+    let finalClose = close;
+    if (bodySize < minBody) {
+      finalClose = close >= open ? open + minBody : open - minBody;
+    }
 
-    candles.push({ second: s, open, high, low, close, price: close });
-    price = close;
+    // 5. Professional Wicks: 30-70% of body size
+    const finalBody = Math.abs(finalClose - open);
+    const wickSize = Math.max(15, Math.floor(finalBody * (0.3 + (Number(randomness % 40n) / 100))));
+    
+    const high = Math.max(open, finalClose) + wickSize;
+    const low = Math.max(1, Math.min(open, finalClose) - wickSize);
+
+    candles.push({ second: s, open, high, low, close: finalClose, price: finalClose });
+    price = finalClose;
   }
 
   return candles;
