@@ -393,7 +393,7 @@ export default function TradePage() {
   const prev = candles[candles.length - 2]
   const cur  = last?.close ?? 1.23456
   const first = candles[0]
-  const pct  = ((cur - first.close) / first.close) * 100
+  const pct  = first ? ((cur - first.close) / first.close) * 100 : 0
   const isUp = cur >= (prev?.close ?? cur)
 
   const notional = (parseFloat(amount) || 0) * leverage
