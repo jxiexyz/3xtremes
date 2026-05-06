@@ -155,9 +155,15 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
 
   useEffect(() => {
     if (seriesRef.current && data.length > 0) {
+      const seen = new Set<number>();
       const validData = data
         .filter(d => d && typeof d.time === 'number' && !isNaN(d.time))
-        .filter((v, i, a) => i === 0 || v.time > a[i - 1].time);
+        .sort((a, b) => a.time - b.time)
+        .filter(d => {
+          if (seen.has(d.time)) return false;
+          seen.add(d.time);
+          return true;
+        });
 
       if (validData.length > 0) {
         if (isCandle) {
