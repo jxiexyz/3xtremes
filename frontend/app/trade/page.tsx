@@ -814,10 +814,15 @@ export default function TradePage() {
                         ? 'bg-white/[0.03] text-white/30 cursor-not-allowed border border-white/[0.05]'
                         : side === 'buy' ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_20px_rgba(16,185,129,0.25)]' : 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_4px_20px_rgba(244,63,94,0.25)]'
                 }`} 
-                onClick={() => {
                   if (!address) return setShowConnect(true)
-                  if (isOrderDisabled || isTxPending) return
+                  if (isOrderDisabled) {
+                    console.log("Order disabled state:", { isInvalidMargin, isExceedsBalance, marginNum, balance });
+                    return;
+                  }
+                  if (isTxPending) return;
+                  
                   setIsTxPending(true)
+                  console.log("🚀 Attempting to open position...", { side, amount, leverage });
                   
                   try {
                     const isLong = side === 'buy';
@@ -830,25 +835,37 @@ export default function TradePage() {
                       functionName: 'openPosition',
                       args: [isLong, margin, lev],
                     }, {
-                      onSuccess: () => {
+                      onSuccess: (hash) => {
+                        console.log("✅ Transaction sent:", hash);
                         setIsTxPending(false);
                         setTradeSuccess(true);
                         setTimeout(() => setTradeSuccess(false), 3000);
                       },
-                      onError: (err) => {
-                        console.error("Trade failed:", err);
+                      onError: (err: any) => {
+                        console.error("❌ Trade failed:", err);
                         setIsTxPending(false);
+                        // Show error to user via alert for quick debug
+                        alert(`Trade Failed: ${err.shortMessage || err.message || "Unknown error"}`);
                       }
                     });
-                  } catch (e) {
-                    console.error("Trade execution error:", e);
+                  } catch (e: any) {
+                    console.error("💥 Trade execution error:", e);
                     setIsTxPending(false);
+                    alert(`Error: ${e.message}`);
                   }
                 }}
               >
                 {isTxPending ? (
                   <><Loader2 size={18} className="animate-spin" /> CONFIRMING...</>
-                ) : !address ? 'CONNECT WALLET' : isOrderDisabled ? (isExceedsBalance ? 'INSUFFICIENT BALANCE' : 'ENTER MARGIN') : side === 'buy' ? 'OPEN LONG' : 'OPEN SHORT'}
+                ) : !address ? (
+                  "CONNECT WALLET"
+                ) : isExceedsBalance ? (
+                  "INSUFFICIENT BALANCE"
+                ) : isInvalidMargin ? (
+                  "INVALID MARGIN"
+                ) : (
+                  `OPEN ${side.toUpperCase()}`
+                )}
                 {(!isOrderDisabled || !address) && !isTxPending && <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />}
               </button>
             </div>
