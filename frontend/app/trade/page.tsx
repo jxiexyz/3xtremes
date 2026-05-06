@@ -141,19 +141,37 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
         wickUpColor: '#10b981', wickDownColor: '#ef4444',
         priceFormat: { type: 'price', precision: 6, minMove: 0.000001 },
       });
-      if (validData.length > 0) series.setData(validData as any);
     } else {
       series = chartRef.current.addSeries(LineSeries, {
-        color: '#10b981', lineWidth: 2, crosshairMarkerVisible: true, crosshairMarkerRadius: 4,
+        color: '#3b82f6', lineWidth: 2, crosshairMarkerVisible: true, crosshairMarkerRadius: 4,
         priceFormat: { type: 'price', precision: 6, minMove: 0.000001 },
       });
-      if (validData.length > 0) {
-        series.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
-      }
     }
     seriesRef.current = series;
+
+    // Immediately set data if available
+    if (data.length > 0) {
+      const seen = new Set<number>();
+      const validData = data
+        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time))
+        .sort((a, b) => a.time - b.time)
+        .filter(d => {
+          if (seen.has(d.time)) return false;
+          seen.add(d.time);
+          return true;
+        });
+      
+      if (validData.length > 0) {
+        if (isCandle) {
+          series.setData(validData as any);
+        } else {
+          series.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
+        }
+      }
+    }
   }, [isCandle]);
 
+  // Handle subsequent data updates
   useEffect(() => {
     if (seriesRef.current && data.length > 0) {
       const seen = new Set<number>();
@@ -187,30 +205,32 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
 
     // Add new lines for each active position
     positions.forEach(p => {
-      const entry = Number(p.entryPrice) / 1e5;
-      const liq = Number(p.liquidationPrice) / 1e5;
+      const entryPrice = Number(p.entryPrice) / 1e5;
+      const liqPrice = Number(p.liquidationPrice) / 1e5;
 
-      // Entry Line
-      const entryLine = seriesRef.current.createPriceLine({
-        price: entry,
-        color: p.isLong ? '#10b981' : '#ef4444',
-        lineWidth: 1,
-        lineStyle: 2, // Dashed
-        axisLabelVisible: true,
-        title: `${p.isLong ? 'L' : 'S'} Entry`,
-      });
-      priceLinesRef.current.push(entryLine);
+      if (entryPrice > 0) {
+        const entryLine = seriesRef.current.createPriceLine({
+          price: entryPrice,
+          color: p.isLong ? '#10b981' : '#ef4444',
+          lineWidth: 1,
+          lineStyle: 2, // Dashed
+          axisLabelVisible: true,
+          title: `${p.isLong ? 'L' : 'S'} Entry @ ${entryPrice.toFixed(5)}`,
+        });
+        priceLinesRef.current.push(entryLine);
+      }
 
-      // Liquidation Line (Orange/White)
-      const liqLine = seriesRef.current.createPriceLine({
-        price: liq,
-        color: '#f97316', 
-        lineWidth: 1,
-        lineStyle: 3, // Dotted
-        axisLabelVisible: true,
-        title: `LIQ`,
-      });
-      priceLinesRef.current.push(liqLine);
+      if (liqPrice > 0) {
+        const liqLine = seriesRef.current.createPriceLine({
+          price: liqPrice,
+          color: '#f97316', 
+          lineWidth: 1,
+          lineStyle: 3, // Dotted
+          axisLabelVisible: true,
+          title: `LIQ @ ${liqPrice.toFixed(5)}`,
+        });
+        priceLinesRef.current.push(liqLine);
+      }
     });
   }, [positions, isCandle]);
 
@@ -482,9 +502,12 @@ export default function TradePage() {
   const estLiq = side === 'buy' ? Math.max(0, cur - (cur / leverage)) : cur + (cur / leverage)
 
   // Validation
-  const marginNum = parseFloat(amount)
+  const marginNum = parseFloat(amount) || 0
+  const openFee = notional * 0.005
+  const totalRequired = marginNum + openFee
+  
   const isInvalidMargin = isNaN(marginNum) || marginNum <= 0
-  const isExceedsBalance = !!address && marginNum > balance
+  const isExceedsBalance = !!address && totalRequired > balance
   const isOrderDisabled = isInvalidMargin || isExceedsBalance
 
   // Auto-Liquidation Trigger (Frontend Safety Net)
@@ -609,7 +632,7 @@ export default function TradePage() {
                     <div className={`text-4xl font-extrabold tracking-tighter tabular-nums transition-colors duration-300 ${
                       isUp ? 'text-emerald-400 drop-shadow-[0_0_24px_rgba(52,211,153,0.4)]' : 'text-rose-500 drop-shadow-[0_0_24px_rgba(244,63,94,0.4)]'
                     }`} style={{ lineHeight: 1.1 }}>
-                      {cur.toFixed(6)}
+                      {cur.toFixed(5)}
                     </div>
                   </div>
                 </div>
@@ -705,12 +728,15 @@ export default function TradePage() {
                   <button 
                     key={p} 
                     className={styles.pctBtn} 
-                    onClick={() => setAmount(
-                      p === '25%' ? (balance * 0.25).toFixed(2) :
-                      p === '50%' ? (balance * 0.50).toFixed(2) :
-                      p === '75%' ? (balance * 0.75).toFixed(2) :
-                      (balance * 0.99).toFixed(2)
-                    )}
+                    onClick={() => {
+                      const maxMargin = balance / (1 + (leverage * 0.005));
+                      setAmount(
+                        p === '25%' ? (maxMargin * 0.25).toFixed(2) :
+                        p === '50%' ? (maxMargin * 0.50).toFixed(2) :
+                        p === '75%' ? (maxMargin * 0.75).toFixed(2) :
+                        (maxMargin * 0.999).toFixed(2) // 0.999 for extra safety against rounding
+                      )
+                    }}
                   >{p}</button>
                 ))}
               </div>
@@ -751,6 +777,15 @@ export default function TradePage() {
                 <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Order Value</span>
                 <span className="text-base font-semibold text-white/90 tabular-nums">{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Opening Fee (0.5%)</span>
+                <span className="text-base font-semibold text-white/70 tabular-nums">{openFee.toFixed(2)} USCC</span>
+              </div>
+              <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">
+                <span className="text-xs font-bold text-white/60 tracking-wide uppercase">Total Required</span>
+                <span className={`text-base font-bold tabular-nums ${isExceedsBalance ? 'text-rose-500' : 'text-white'}`}>{totalRequired.toFixed(2)} USCC</span>
+              </div>
+              <div className={styles.divider} style={{ margin: '8px 0', opacity: 0.2 }} />
               <div className="flex justify-between items-center">
                 <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Est. Liq Price</span>
                 <span className="text-base font-semibold text-white/90 tabular-nums">{estLiq.toFixed(5)}</span>

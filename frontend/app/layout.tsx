@@ -4,6 +4,7 @@ import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { hashFn } from '@wagmi/core/query'
 import { config } from '../lib/wagmi'
+import ChainWatcher from '../components/wallet/ChainWatcher'
 import '../styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="overflow-x-hidden">
         <WagmiProvider config={config}>
           <QueryClientProvider client={queryClient}>
+            <ChainWatcher />
             {children}
           </QueryClientProvider>
         </WagmiProvider>
