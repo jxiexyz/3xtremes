@@ -27,7 +27,7 @@ if (rawKey && !rawKey.startsWith("0x")) {
   rawKey = `0x${rawKey}`;
 }
 const PRIVATE_KEY = rawKey as `0x${string}`;
-const WS_URL = process.env.WS_URL || "ws://localhost:8080";
+const WS_URL = process.env.WS_URL || `ws://localhost:${process.env.PORT || 8080}`;
 
 if (!POSITION_MANAGER_ADDRESS || !PRIVATE_KEY || PRIVATE_KEY === "0x") {
   console.error("❌ Missing POSITION_MANAGER_ADDRESS or KEEPER_PRIVATE_KEY in environment");

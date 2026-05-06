@@ -1,10 +1,10 @@
 {
   "name": "3xtremes-bots",
   "version": "1.0.0",
-  "main": "dist/bot/keeper.js",
+  "main": "dist/bot/main.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/bot/keeper.js",
+    "start": "node dist/bot/main.js",
     "start:keeper": "node dist/bot/keeper.js",
     "start:liquidator": "node dist/bot/liquidator.js"
   },
