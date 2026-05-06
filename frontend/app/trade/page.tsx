@@ -962,8 +962,11 @@ export default function TradePage() {
                             </div>
                             <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{fmtPrice(p.entryPrice)}</span>
                           </td>
-                          <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', fontWeight: 700, fontSize: 14 }}>
-                            {isPnlPositive ? '+' : ''}{displayPnl.toFixed(2)}
+                          <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444' }}>
+                            <div className="flex flex-col">
+                              <span style={{ fontWeight: 800, fontSize: 15 }}>{isPnlPositive ? '+' : ''}{((displayPnl / margin) * 100).toFixed(2)}%</span>
+                              <span style={{ fontSize: 10, opacity: 0.6 }}>{isPnlPositive ? '+' : ''}{displayPnl.toFixed(2)} USCC</span>
+                            </div>
                           </td>
                           <td style={{ textAlign: 'right' }}>
                             {isUnderwater ? (

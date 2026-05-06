@@ -27,7 +27,7 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
 
     uint256 public constant MAX_LEVERAGE = 10_000;
     uint256 public constant MIN_LEVERAGE = 10;
-    uint256 public constant LIQ_THRESHOLD = 80;           // liquidate at 80% loss
+    uint256 public constant LIQ_THRESHOLD = 100;          // liquidate at 100% loss (Total wipeout)
     uint256 public constant SPREAD_FEE_BPS = 50;          // 0.5% in basis points (out of 10000)
     uint256 public constant LIQUIDATION_PLATFORM_FEE = 5; // 5% to platform on liquidation
     uint256 public constant LIQUIDATION_BOT_REWARD = 2;   // 2% to liquidation bot
@@ -606,7 +606,8 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
         bool isLong
     ) internal pure returns (uint256) {
         // liqMove = entryPrice * LIQ_THRESHOLD / (leverage * 100)
-        uint256 liqMove = (entryPrice * LIQ_THRESHOLD) / (leverage * 100);
+        // Since LIQ_THRESHOLD is 100, move is simply entryPrice / leverage
+        uint256 liqMove = entryPrice / leverage;
 
         if (isLong) {
             return entryPrice > liqMove ? entryPrice - liqMove : 1;
