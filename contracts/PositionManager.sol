@@ -515,7 +515,7 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
             uint256 profit = uint256(pnl);
 
             // Collect 0.5% fee on profit
-            uint256 closeFee = (profit * SPREAD_FEE_BPS) / BASIS_POINTS;
+            uint256 closeFee = (profit * spreadFeeBps) / BASIS_POINTS;
             uint256 netProfit = profit > closeFee ? profit - closeFee : 0;
             toReturn = pos.margin + netProfit;
 
