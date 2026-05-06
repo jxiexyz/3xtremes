@@ -79,7 +79,13 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
         barSpacing: 10,
         minBarSpacing: 0.5,
       },
-      rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)', autoScale: true },
+      rightPriceScale: { 
+        borderColor: 'rgba(255, 255, 255, 0.1)', 
+        autoScale: true,
+      },
+      localization: {
+        priceFormatter: (price: number) => price.toFixed(5),
+      },
       autoSize: true,
     });
     chartRef.current = chart;
@@ -132,11 +138,13 @@ function TradingChart({ data, isCandle }: { data: Candle[], isCandle: boolean })
       series = chartRef.current.addSeries(CandlestickSeries, {
         upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
         wickUpColor: '#10b981', wickDownColor: '#ef4444',
+        priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
       if (validData.length > 0) series.setData(validData as any);
     } else {
       series = chartRef.current.addSeries(LineSeries, {
         color: '#10b981', lineWidth: 2, crosshairMarkerVisible: true, crosshairMarkerRadius: 4,
+        priceFormat: { type: 'price', precision: 5, minMove: 0.00001 },
       });
       if (validData.length > 0) {
         series.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
@@ -531,7 +539,7 @@ export default function TradePage() {
                     <div className={`text-4xl font-extrabold tracking-tighter tabular-nums transition-colors duration-300 ${
                       isUp ? 'text-emerald-400 drop-shadow-[0_0_24px_rgba(52,211,153,0.4)]' : 'text-rose-500 drop-shadow-[0_0_24px_rgba(244,63,94,0.4)]'
                     }`} style={{ lineHeight: 1.1 }}>
-                      {cur.toFixed(4)}
+                      {cur.toFixed(5)}
                     </div>
                   </div>
                 </div>
