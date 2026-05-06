@@ -286,6 +286,7 @@ export default function TradePage() {
 
   const [candles, setCandles] = useState<Candle[]>(() => seedCandles(150))
   const [isCandle, setIsCandle] = useState(true)
+  const [countdown, setCountdown] = useState(60)
 
   // UX States
   const [isLoading, setIsLoading] = useState(true)
@@ -299,26 +300,78 @@ export default function TradePage() {
   }, [])
 
   useEffect(() => {
-    const id = setInterval(() => {
-      setCandles(prev => { 
-        const last = prev[prev.length - 1]; 
-        const now = Math.floor(Date.now() / 1000);
-        const tick = genCandle(last.close, now);
-        
-        if (now >= last.time + 60) {
-           return [...prev.slice(-149), { ...tick, time: last.time + 60, open: last.close }];
-        } else {
-           return [...prev.slice(0, -1), { 
-             ...last, 
-             close: tick.close, 
-             high: Math.max(last.high, tick.close), 
-             low: Math.min(last.low, tick.close) 
-           }];
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "wss://3xtremes-production.up.railway.app";
+    let ws: any = null;
+    let reconnectTimeout: any;
+
+    function connect() {
+      console.log("Connecting to WebSocket:", wsUrl);
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log("Connected to 3xtremes Live price feed!");
+      };
+
+      ws.onmessage = (event: any) => {
+        try {
+          const msg = JSON.parse(event.data);
+          
+          if (msg.type === "CANDLE") {
+            const price = Number(msg.close) / 1e5;
+            const isNewRound = msg.second === 0;
+
+            // Sync countdown directly with server second ticks
+            setCountdown(Math.max(0, 60 - msg.second));
+
+            setCandles(prev => {
+              const last = prev[prev.length - 1];
+              const now = Math.floor(Date.now() / 1000);
+              
+              if (isNewRound || !last) {
+                const newCandle: Candle = {
+                  time: now,
+                  open: price,
+                  high: price,
+                  low: price,
+                  close: price,
+                  volume: Math.floor(Math.random() * 80000 + 20000)
+                };
+                return [...prev.slice(-149), newCandle];
+              } else {
+                const updated = {
+                  ...last,
+                  close: price,
+                  high: Math.max(last.high, price),
+                  low: Math.min(last.low, price)
+                };
+                return [...prev.slice(0, -1), updated];
+              }
+            });
+          } else if (msg.type === "ROUND_START") {
+            setCountdown(60);
+          }
+        } catch (e) {
+          console.error("Error parsing WS message:", e);
         }
-      });
-    }, 1000)
-    return () => clearInterval(id)
-  }, [])
+      };
+
+      ws.onerror = (err: any) => {
+        console.error("WebSocket error:", err);
+      };
+
+      ws.onclose = () => {
+        console.log("WebSocket disconnected. Retrying connection in 3s...");
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+    }
+
+    connect();
+
+    return () => {
+      if (ws) ws.close();
+      clearTimeout(reconnectTimeout);
+    };
+  }, []);
 
   const [side, setSide]           = useState<'buy' | 'sell'>('buy')
   const [amount, setAmount]       = useState('100')
@@ -347,20 +400,7 @@ export default function TradePage() {
   const isExceedsBalance = !!address && marginNum > balance
   const isOrderDisabled = isInvalidMargin || isExceedsBalance
 
-  // Round countdown — synced to the last candle's 60s window
-  const [countdown, setCountdown] = useState(60)
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCandles(prev => {
-        const last = prev[prev.length - 1]
-        const now = Math.floor(Date.now() / 1000)
-        const remaining = Math.max(0, (last.time + 60) - now)
-        setCountdown(remaining === 0 ? 60 : remaining)
-        return prev
-      })
-    }, 1000)
-    return () => clearInterval(id)
-  }, [])
+
 
   const MARKETS = [
     { n: '3X/USCC', s: 'ROUND', p: cur.toFixed(5), c: `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`, up: pct >= 0, bg: '#2563eb', is3X: true },
