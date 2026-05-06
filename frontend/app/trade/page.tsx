@@ -232,7 +232,9 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
         priceLinesRef.current.push(liqLine);
       }
     });
-  }, [positions, isCandle]);
+
+    console.log("🎨 Chart Redrawn with positions:", positions.length);
+  }, [positions, isCandle]); // Removed 'cur' to fix ReferenceError
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -375,6 +377,8 @@ export default function TradePage() {
   const openPositions = allPositions.filter((p: any) => p.isOpen)
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
+  console.log("📊 TradePage Data:", { ids, openPositions: openPositions.length });
+
   const [candles, setCandles] = useState<Candle[]>([])
   const [isCandle, setIsCandle] = useState(true)
   const [countdown, setCountdown] = useState(60)
@@ -503,7 +507,7 @@ export default function TradePage() {
 
   // Validation
   const marginNum = parseFloat(amount) || 0
-  const openFee = notional * 0.005
+  const openFee = notional * 0.0001
   const totalRequired = marginNum + openFee
   
   const isInvalidMargin = isNaN(marginNum) || marginNum <= 0
@@ -778,7 +782,7 @@ export default function TradePage() {
                 <span className="text-base font-semibold text-white/90 tabular-nums">{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Opening Fee (0.5%)</span>
+                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Opening Fee (0.01%)</span>
                 <span className="text-base font-semibold text-white/70 tabular-nums">{openFee.toFixed(2)} USCC</span>
               </div>
               <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">

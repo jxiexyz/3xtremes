@@ -28,7 +28,7 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
     uint256 public constant MAX_LEVERAGE = 10_000;
     uint256 public constant MIN_LEVERAGE = 10;
     uint256 public constant LIQ_THRESHOLD = 100;          // liquidate at 100% loss (Total wipeout)
-    uint256 public constant SPREAD_FEE_BPS = 50;          // 0.5% in basis points (out of 10000)
+    uint256 public spreadFeeBps = 1;                      // 0.01% in basis points (default)
     uint256 public constant LIQUIDATION_PLATFORM_FEE = 5; // 5% to platform on liquidation
     uint256 public constant LIQUIDATION_BOT_REWARD = 2;   // 2% to liquidation bot
     uint256 public constant BASIS_POINTS = 10_000;
@@ -222,8 +222,8 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
             : newShortOI - newLongOI;
         if (imbalance > MAX_OI_IMBALANCE) revert ExceedsOIImbalanceLimit();
 
-        // Calculate fee: 0.5% of SIZE (not margin)
-        uint256 fee = (size * SPREAD_FEE_BPS) / BASIS_POINTS;
+        // Calculate fee: spreadFeeBps of SIZE (not margin)
+        uint256 fee = (size * spreadFeeBps) / BASIS_POINTS;
         uint256 totalRequired = margin + fee;
 
         // Check USCC balance (via CreditVault)
@@ -643,6 +643,10 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
     // ═══════════════════════════════════════════════
     //  ADMIN
     // ═══════════════════════════════════════════════
+
+    function setSpreadFeeBps(uint256 _newFeeBps) external onlyOwner {
+        spreadFeeBps = _newFeeBps;
+    }
 
     /**
      * @notice Update max position size (should be ~1% of insurance fund)
