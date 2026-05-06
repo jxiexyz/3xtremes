@@ -189,29 +189,36 @@ interface Candle {
 function computeCandles(seed: bigint, startPrice: number): Candle[] {
   const candles: Candle[] = [];
   let price = startPrice;
+  let momentum = 0; // Natural flow momentum
 
-  // Determine trend for this round: -40 to +40 bias (stronger trend)
-  const trendBias = Number((seed % 81n) - 40n);
+  // Global trend for the round: -30 to +30
+  const globalTrend = Number((seed % 61n) - 30n);
 
   for (let s = 0; s < 60; s++) {
     const randomness = computeRandomness(seed, s);
     const open = price;
     
-    // Create more "Body" by increasing the move range
-    // 10% chance for a "Power Move" (High Volume candle)
-    const isPowerMove = (randomness % 10n) === 0n;
-    const baseVolatility = isPowerMove ? 400 : 120;
+    // 1. Natural Momentum: Price tends to follow previous direction (smooth flow)
+    const noise = Number((randomness % 101n) - 50n);
+    momentum = (momentum * 0.7) + (noise * 0.3) + globalTrend;
     
-    const move = Number((randomness % BigInt(baseVolatility * 2 + 1)) - BigInt(baseVolatility)) + trendBias;
+    // 2. Enforce "High Volume" Body: Ensure move is never too small (No Dojis)
+    let move = momentum;
+    const minMove = 40; // Minimum body size
+    if (Math.abs(move) < minMove) {
+      move = move >= 0 ? minMove : -minMove;
+    }
+
     const close = Math.max(1, price + move);
 
-    // Wicks: high/low should be dynamic but not too messy
-    // High volume candles (power moves) have smaller wicks relative to body
+    // 3. Proportional Professional Wicks
+    // Wicks should be 20-50% of the body size for a "busy" look
     const bodySize = Math.abs(close - open);
-    const wickRange = isPowerMove ? Math.floor(bodySize * 0.3) : Math.max(15, Math.floor(bodySize * 0.6));
+    const highWick = Math.max(10, Math.floor(bodySize * (0.2 + (Number(randomness % 30n) / 100))));
+    const lowWick = Math.max(10, Math.floor(bodySize * (0.2 + (Number((randomness >> 16n) % 30n) / 100))));
     
-    const high = Math.max(open, close) + Math.floor(Number(randomness % BigInt(wickRange + 5)));
-    const low = Math.max(1, Math.min(open, close) - Math.floor(Number((randomness >> 16n) % BigInt(wickRange + 5))));
+    const high = Math.max(open, close) + highWick;
+    const low = Math.max(1, Math.min(open, close) - lowWick);
 
     candles.push({ second: s, open, high, low, close, price: close });
     price = close;
