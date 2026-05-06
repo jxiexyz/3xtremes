@@ -487,6 +487,26 @@ export default function TradePage() {
   const isExceedsBalance = !!address && marginNum > balance
   const isOrderDisabled = isInvalidMargin || isExceedsBalance
 
+  // Auto-Liquidation Trigger (Frontend Safety Net)
+  useEffect(() => {
+    if (!address || openPositions.length === 0 || cur === 0) return;
+
+    openPositions.forEach(p => {
+      const liqPrice = Number(p.liquidationPrice) / 1e5;
+      const isLiquidatable = p.isLong ? (cur <= liqPrice) : (cur >= liqPrice);
+      
+      if (isLiquidatable) {
+        console.log(`💀 Auto-liquidating position #${p.positionId}...`);
+        writeContract({
+          address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
+          abi: POSITION_MANAGER_ABI,
+          functionName: 'liquidatePosition',
+          args: [p.positionId],
+        });
+      }
+    });
+  }, [cur, openPositions, address]);
+
 
 
   const MARKETS = [
