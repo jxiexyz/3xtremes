@@ -562,7 +562,25 @@ export default function TradePage() {
                   <SkeletonLine width="100%" height="20px" className="opacity-50" />
                 </div>
               ) : (
-                <TradingChart data={candles} isCandle={isCandle} />
+                <>
+                  <TradingChart data={candles} isCandle={isCandle} />
+                  
+                  {/* Round Status Overlay */}
+                  {roundStatus !== "Active" && (
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#030712]/40 backdrop-blur-[2px] transition-all duration-500 animate-[fadeIn_0.3s_ease-out]">
+                      <div className="flex flex-col items-center gap-4 p-8 rounded-3xl bg-white/[0.03] border border-white/[0.08] shadow-2xl backdrop-blur-xl scale-100 animate-[zoomIn_0.3s_ease-out]">
+                        <div className="relative">
+                          <Loader2 size={32} className="text-emerald-400 animate-spin" />
+                          <div className="absolute inset-0 blur-lg bg-emerald-400/20 animate-pulse" />
+                        </div>
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className="text-sm font-bold text-white uppercase tracking-[0.2em] drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">{roundStatus}</div>
+                          <div className="text-[10px] text-white/40 font-medium uppercase tracking-[0.3em]">Syncing with chain</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
