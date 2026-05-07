@@ -139,6 +139,7 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
     error OnlyRoundEngine();
     error ZeroAddress();
     error ZeroAmount();
+    error NotAuthorizedKeeper();
 
     // ═══════════════════════════════════════════════
     //  MODIFIERS
@@ -146,6 +147,11 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
 
     modifier onlyRoundEngine() {
         if (msg.sender != roundEngine) revert OnlyRoundEngine();
+        _;
+    }
+
+    modifier onlyKeeper() {
+        if (!IRoundEngine(roundEngine).authorizedKeepers(msg.sender)) revert NotAuthorizedKeeper();
         _;
     }
 
@@ -312,6 +318,148 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
 
         uint256 currentPrice = IRoundEngine(roundEngine).getCurrentPrice();
         _closePositionInternal(positionId, currentPrice, msg.sender);
+    }
+
+    // ═══════════════════════════════════════════════
+    //  BACKEND DELEGATED TRADING (Hybrid DEX)
+    // ═══════════════════════════════════════════════
+
+    /**
+     * @notice Backend/Keeper opens a position on behalf of the user with exact price.
+     * @dev Zero latency, optimistic execution.
+     */
+    function backendOpenPosition(
+        address trader,
+        bool isLong,
+        uint256 margin,
+        uint256 leverage,
+        uint256 executionPrice
+    ) external onlyKeeper nonReentrant whenNotPaused returns (uint256 positionId) {
+        if (margin == 0) revert ZeroAmount();
+        _validateLeverage(leverage);
+
+        IRoundEngine engine = IRoundEngine(roundEngine);
+        if (!engine.isPositionOpenAllowed()) revert InLockWindow();
+
+        uint256 roundId = engine.currentRoundId();
+        if (roundId == 0) revert RoundNotActive();
+
+        uint256 size = margin * leverage;
+        if (size > maxPositionSize) revert ExceedsMaxPositionSize(size, maxPositionSize);
+
+        uint256 openCount = _countOpenPositions(trader);
+        if (openCount >= MAX_POSITIONS_PER_USER) {
+            revert ExceedsMaxPositions(openCount, MAX_POSITIONS_PER_USER);
+        }
+
+        int256 exposureDelta = isLong ? int256(size) : -int256(size);
+        int256 newNetExposure = userNetExposure[trader] + exposureDelta;
+        if (newNetExposure > int256(MAX_NET_EXPOSURE_USCC) ||
+            newNetExposure < -int256(MAX_NET_EXPOSURE_USCC)) {
+            revert ExceedsNetExposureLimit(newNetExposure, MAX_NET_EXPOSURE_USCC);
+        }
+
+        uint256 newLongOI = isLong ? totalLongOI + size : totalLongOI;
+        uint256 newShortOI = isLong ? totalShortOI : totalShortOI + size;
+        uint256 imbalance = newLongOI > newShortOI
+            ? newLongOI - newShortOI
+            : newShortOI - newLongOI;
+        if (imbalance > MAX_OI_IMBALANCE) revert ExceedsOIImbalanceLimit();
+
+        uint256 fee = (size * spreadFeeBps) / BASIS_POINTS;
+        uint256 totalRequired = margin + fee;
+
+        uint256 userBalance = ICreditVault(creditVault).getUSCCBalance(trader);
+        if (userBalance < totalRequired) {
+            revert InsufficientMargin(totalRequired, userBalance);
+        }
+
+        uint256 liquidationPrice = _calcLiquidationPrice(
+            executionPrice,
+            leverage,
+            isLong
+        );
+
+        positionCounter++;
+        positionId = positionCounter;
+
+        positions[positionId] = Position({
+            positionId: positionId,
+            trader: trader,
+            roundId: roundId,
+            isLong: isLong,
+            entryPrice: executionPrice,
+            margin: margin,
+            leverage: leverage,
+            size: size,
+            liquidationPrice: liquidationPrice,
+            isOpen: true,
+            isLiquidated: false,
+            openTimestamp: block.timestamp,
+            closeTimestamp: 0,
+            realizedPnL: 0
+        });
+
+        userPositionIds[trader].push(positionId);
+
+        userNetExposure[trader] = newNetExposure;
+        if (isLong) { totalLongOI += size; } else { totalShortOI += size; }
+
+        ICreditVault(creditVault).deductUSCC(trader, totalRequired, "OPEN_POSITION");
+        ICreditVault(creditVault).updateOpenPositionCount(trader, true);
+        IFeeManager(feeManager).collectFee(fee, trader);
+
+        emit PositionOpened(
+            positionId,
+            trader,
+            roundId,
+            isLong,
+            executionPrice,
+            margin,
+            leverage,
+            size,
+            liquidationPrice
+        );
+
+        return positionId;
+    }
+
+    /**
+     * @notice Backend/Keeper closes a position on behalf of the user with exact price.
+     */
+    function backendClosePosition(
+        uint256 positionId,
+        uint256 executionPrice
+    ) external onlyKeeper nonReentrant whenNotPaused {
+        Position storage pos = positions[positionId];
+
+        if (pos.positionId == 0) revert PositionNotFound(positionId);
+        if (!pos.isOpen) revert PositionNotOpen(positionId);
+        if (pos.isLiquidated) revert PositionAlreadyLiquidated(positionId);
+
+        if (!IRoundEngine(roundEngine).isPositionOpenAllowed()) revert InLockWindow();
+
+        _closePositionInternal(positionId, executionPrice, address(0));
+    }
+
+    /**
+     * @notice Backend/Keeper liquidates a position with exact exact price.
+     */
+    function backendLiquidatePosition(
+        uint256 positionId,
+        uint256 executionPrice
+    ) external onlyKeeper nonReentrant whenNotPaused {
+        Position storage pos = positions[positionId];
+
+        if (pos.positionId == 0) revert PositionNotFound(positionId);
+        if (!pos.isOpen) revert PositionNotOpen(positionId);
+        if (pos.isLiquidated) revert PositionAlreadyLiquidated(positionId);
+
+        if (!_isLiquidatable(pos, executionPrice)) {
+            revert NotLiquidatable(positionId);
+        }
+
+        _liquidateInternal(positionId, executionPrice, msg.sender);
     }
 
     // ═══════════════════════════════════════════════
@@ -667,6 +815,7 @@ interface IRoundEngine {
     function currentRoundId() external view returns (uint256);
     function getCurrentPrice() external view returns (uint256);
     function isPositionOpenAllowed() external view returns (bool);
+    function authorizedKeepers(address keeper) external view returns (bool);
 }
 
 interface ICreditVault {

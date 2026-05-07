@@ -34,8 +34,14 @@ const ROUND_ENGINE_ABI = parseAbi([
 ]);
 
 const POSITION_MANAGER_ABI = parseAbi([
+  // Legacy on-chain user calls (kept for compatibility)
   "function liquidatePosition(uint256 positionId) external",
   "function checkLiquidation(uint256 positionId) external view returns (bool)",
+  // ── Hybrid DEX: Backend-delegated execution ──────────────────────────────
+  "function backendOpenPosition(address trader, bool isLong, uint256 margin, uint256 leverage, uint256 executionPrice) external returns (uint256)",
+  "function backendClosePosition(uint256 positionId, uint256 executionPrice) external",
+  "function backendLiquidatePosition(uint256 positionId, uint256 executionPrice) external",
+  // Events
   "event PositionOpened(uint256 indexed positionId, address indexed trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice)",
   "event PositionClosed(uint256 indexed positionId, address indexed trader, uint256 exitPrice, int256 pnl, uint256 closeTimestamp)",
   "event PositionLiquidated(uint256 indexed positionId, address indexed trader, address indexed liquidator, uint256 liquidationPrice, uint256 marginLost)",
@@ -88,7 +94,23 @@ wss.on("connection", (ws) => {
   ws.on("message", async (data) => {
     try {
       const msg = JSON.parse(data.toString());
-      if (msg.type === "REQUEST_LIQUIDATION") {
+
+      // ── OPEN POSITION (Optimistic: Frontend already updated UI) ────────────
+      if (msg.type === "OPEN_POSITION") {
+        const { trader, isLong, margin, leverage, price } = msg;
+        log(`📥 OPEN request: ${trader} | ${isLong ? "LONG" : "SHORT"} | margin=${margin} | lev=${leverage}x | price=${formatPrice(BigInt(price))}`);
+        await backendOpen(trader, isLong, BigInt(margin), BigInt(leverage), price);
+      }
+
+      // ── CLOSE POSITION (Optimistic: Frontend already locked the position) ──
+      else if (msg.type === "CLOSE_POSITION") {
+        const { positionId, price } = msg;
+        log(`📥 CLOSE request: positionId=${positionId} | price=${formatPrice(BigInt(price))}`);
+        await backendClose(BigInt(positionId), price);
+      }
+
+      // ── LEGACY: Manual liquidation request from frontend ──────────────────
+      else if (msg.type === "REQUEST_LIQUIDATION") {
         const pid = msg.positionId.toString();
         log(`📢 Liquidation request RECEIVED for #${pid} - Executing NOW!`);
         const targetPos = openPositions.get(pid);
@@ -97,7 +119,7 @@ wss.on("connection", (ws) => {
         }
         broadcast(msg);
       }
-    } catch (e) {}
+    } catch (e) { log(`⚠️ WS message error: ${(e as any)?.message}`); }
   });
 
   ws.on("close", () => {
@@ -400,10 +422,12 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     candleHistory.push(candleMsg);
     if (candleHistory.length > 200) candleHistory.shift();
 
-    // Update price on-chain every SECOND for ultra-high accuracy
-    updatePriceOnChain(candle.close);
+    // ── Hybrid DEX: NO per-second on-chain price update ─────────────────────
+    // Price is delivered to the contract JIT (Just-In-Time) only when needed:
+    //   - backendOpen / backendClose: execution price is passed as an argument
+    //   - doLiquidate: price is passed directly to backendLiquidatePosition
 
-    // --- INSTANT LIQUIDATION CHECK ---
+    // --- INSTANT LIQUIDATION CHECK (off-chain) ---
     checkAllLiquidations(candle.high, candle.low);
 
     broadcast(candleMsg);
@@ -472,23 +496,70 @@ async function settle(roundId: number, finalPrice: number) {
   setTimeout(startRound, 2000);
 }
 
-async function updatePriceOnChain(price: number) {
-  if (isSettling) return;
-  
+// ─── Hybrid DEX: Backend Execution Functions ─────────────────────────────────
+
+/**
+ * Open a position on behalf of a user.
+ * Called when Frontend sends an OPEN_POSITION WS message.
+ */
+async function backendOpen(
+  trader: `0x${string}`,
+  isLong: boolean,
+  margin: bigint,
+  leverage: bigint,
+  price: number
+) {
   try {
     const hash = await walletClient.writeContract({
-      address: ROUND_ENGINE_ADDRESS,
-      abi: ROUND_ENGINE_ABI,
-      functionName: "updatePrice",
-      args: [BigInt(Math.floor(price))],
+      address: POSITION_MANAGER_ADDRESS,
+      abi: POSITION_MANAGER_ABI,
+      functionName: "backendOpenPosition",
+      args: [trader, isLong, margin, leverage, BigInt(Math.floor(price))],
     });
-    // Silent update, no need to log every 2s unless debugging
+    log(`📤 backendOpen tx: ${hash}`);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status === "success") {
+      log(`✅ Position OPENED for ${trader} (block ${receipt.blockNumber})`);
+      // Notify frontend the on-chain tx is confirmed
+      broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash });
+    } else {
+      log(`❌ backendOpen REVERTED for ${trader}`);
+      broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
+    }
   } catch (err: any) {
-    // log(`⚠️ Price update failed: ${err.message}`);
+    log(`❌ backendOpen error: ${err?.shortMessage || err?.message}`);
+    broadcast({ type: "POSITION_FAILED", trader, reason: err?.shortMessage || err?.message });
   }
 }
 
-// --- LIQUIDATION LOGIC ---
+/**
+ * Close a position on behalf of a user.
+ * Called when Frontend sends a CLOSE_POSITION WS message.
+ */
+async function backendClose(positionId: bigint, price: number) {
+  try {
+    const hash = await walletClient.writeContract({
+      address: POSITION_MANAGER_ADDRESS,
+      abi: POSITION_MANAGER_ABI,
+      functionName: "backendClosePosition",
+      args: [positionId, BigInt(Math.floor(price))],
+    });
+    log(`📤 backendClose tx: ${hash} | positionId=${positionId}`);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status === "success") {
+      log(`✅ Position #${positionId} CLOSED (block ${receipt.blockNumber})`);
+      broadcast({ type: "CLOSE_CONFIRMED", positionId: positionId.toString(), price, tx: hash });
+    } else {
+      log(`❌ backendClose REVERTED for #${positionId}`);
+      broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "tx_reverted" });
+    }
+  } catch (err: any) {
+    log(`❌ backendClose error: ${err?.shortMessage || err?.message}`);
+    broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: err?.shortMessage || err?.message });
+  }
+}
+
+// ─── Liquidation Logic ────────────────────────────────────────────────────────
 
 async function checkAllLiquidations(high: number, low: number) {
   if (openPositions.size === 0) return;
@@ -506,37 +577,38 @@ async function doLiquidate(id: string, pos: any) {
   if (liquidating.has(id)) return;
   liquidating.add(id);
 
+  // Optimistic: immediately broadcast liquidation to frontend so UI locks the position
+  broadcast({
+    type: "POSITION_LIQUIDATED",
+    positionId: id,
+    trader: pos.trader,
+    liquidationPrice: pos.liquidationPrice.toString(),
+  });
+
   try {
-    log(`🔥 Liquidating #${id} | forcing price to ${pos.liquidationPrice} to guarantee execution`);
-    
-    // Get pending nonce to ensure both txs are queued sequentially
-    const nonce = await publicClient.getTransactionCount({ address: account.address, blockTag: 'pending' });
+    log(`🔥 Liquidating #${id} | executionPrice=${formatPrice(pos.liquidationPrice)}`);
 
-    // 1. Force the RoundEngine to see the exact price that triggered the liquidation (e.g., the wick)
-    const updateHash = await walletClient.writeContract({
-      address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI,
-      functionName: "updatePrice", args: [pos.liquidationPrice],
-      nonce: nonce,
+    // ── Hybrid DEX: single tx using backendLiquidatePosition ─────────────────
+    // Passes the exact wick price that triggered liquidation as executionPrice.
+    // No need for a separate updatePrice tx anymore.
+    const hash = await walletClient.writeContract({
+      address: POSITION_MANAGER_ADDRESS,
+      abi: POSITION_MANAGER_ABI,
+      functionName: "backendLiquidatePosition",
+      args: [pos.positionId, pos.liquidationPrice],
     });
 
-    // 2. Execute liquidation immediately after
-    const liqHash = await walletClient.writeContract({
-      address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI,
-      functionName: "liquidatePosition", args: [pos.positionId],
-      nonce: nonce + 1,
-    });
+    log(`📤 backendLiquidate tx: ${hash}`);
+    await publicClient.waitForTransactionReceipt({ hash });
 
-    log(`📤 Force Price tx: ${updateHash}`);
-    log(`📤 Liquidate tx: ${liqHash}`);
-
-    await publicClient.waitForTransactionReceipt({ hash: liqHash });
-    
     openPositions.delete(id);
     liquidating.delete(id);
-    log(`✅ #${id} liquidated successfully!`);
+    log(`✅ #${id} liquidated on-chain!`);
+    broadcast({ type: "LIQUIDATION_CONFIRMED", positionId: id, tx: hash });
   } catch (err: any) {
-    log(`❌ liquidatePosition(#${id}) error: ${err.shortMessage || err.message}`);
+    log(`❌ backendLiquidate(#${id}) error: ${err.shortMessage || err.message}`);
     liquidating.delete(id);
+    broadcast({ type: "LIQUIDATION_FAILED", positionId: id, reason: err?.shortMessage || err?.message });
   }
 }
 
