@@ -628,8 +628,8 @@ export default function TradePage() {
       const livePnl   = (priceDiff / entry) * (margin * lev);
 
       const isLiquidatable = p.isLong
-        ? (lastCandle.low  <= liqPrice)
-        : (lastCandle.high >= liqPrice);
+        ? (lastCandle.close <= liqPrice)
+        : (lastCandle.close >= liqPrice);
 
       if (isLiquidatable) {
         console.log(`💀 Wipeout #${posId} — price=${lastCandle.close} liqPrice=${liqPrice} margin=${margin}`);
