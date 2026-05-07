@@ -463,26 +463,22 @@ export default function TradePage() {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "POSITION_CONFIRMED") {
-            // On-chain confirmed — remove optimistic entry (real data from contract will take over)
-            setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== `${msg.trader}_${msg.price}_${msg.isLong}`));
-            setTradeSuccess(true);
+            // Tx submitted — just clear pending state & show success
+            // Optimistic position stays visible; real data from contract polling replaces it
             setIsTxPending(false);
+            setTradeSuccess(true);
             setTimeout(() => setTradeSuccess(false), 3000);
 
           } else if (msg.type === "POSITION_FAILED") {
-            // Rollback optimistic position
-            setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== `${msg.trader}_${msg.reason}`));
+            // Rollback: remove ALL optimistic positions for this trader
+            setOptimisticPositions(prev => prev.filter(p => p.trader?.toLowerCase() !== msg.trader?.toLowerCase()));
             setIsTxPending(false);
             alert(`Trade Failed: ${msg.reason}`);
 
           } else if (msg.type === "POSITION_LIQUIDATED") {
-            // Optimistic liquidation from bot
+            // Bot push: optimistic liquidation lock
             updateWipedOutIds(msg.positionId.toString());
             liquidationFiredRef.current.add(msg.positionId.toString());
-            setClosingPositionIds(prev => new Set([...prev, msg.positionId.toString()]));
-
-          } else if (msg.type === "LIQUIDATION_CONFIRMED") {
-            setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
 
           } else if (msg.type === "CLOSE_CONFIRMED") {
             setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
@@ -599,6 +595,7 @@ export default function TradePage() {
   // Once a position hits -100% (via wick OR PnL), it's permanently frozen
   // and liquidation TX fires ONCE (not every candle tick)
   useEffect(() => {
+    // Only check REAL on-chain positions, never optimistic ones
     if (!address || openPositions.length === 0 || candles.length === 0) return;
 
     const lastCandle = candles[candles.length - 1];
@@ -768,7 +765,7 @@ export default function TradePage() {
                 </div>
               ) : (
                 <>
-                  <TradingChart data={candles} isCandle={isCandle} positions={openPositions} showLines={roundStatus === "Active"} />
+                  <TradingChart data={candles} isCandle={isCandle} positions={[...openPositions, ...optimisticPositions]} showLines={roundStatus === "Active"} />
                   
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
@@ -1117,61 +1114,70 @@ export default function TradePage() {
                     <tr><th>Side/Entry</th><th>PNL</th><th style={{ textAlign: 'right' }}>Action</th></tr>
                   </thead>
                   <tbody>
-                    {[...openPositions, ...optimisticPositions].map((p: any) => {
-                      const pnlIdx = ids.findIndex(id => id === p.positionId);
-                      const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
-                      const posId  = p.positionId.toString();
-                      const entry  = Number(p.entryPrice) / 1e5;
-                      const margin = Number(p.margin) / 1e6;
-                      const lev    = Number(p.leverage);
-                      const isWipedOut = wipedOutIds.has(posId);
-                      const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
-                      const livePnl   = isWipedOut ? -margin : (priceDiff / entry) * (margin * lev);
-                      const rawPnl    = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
-                      const displayPnl    = isWipedOut ? -margin : Math.max(rawPnl, -margin);
-                      const isPnlPositive = displayPnl >= 0;
-                      const pnlPct        = Math.max((displayPnl / margin) * 100, -100);
-                      const liqPrice    = Number(p.liquidationPrice) / 1e5;
-                      const isUnderwater = p.isLong ? (cur <= liqPrice) : (cur >= liqPrice);
-                      const isLiquidated = isWipedOut || isUnderwater;
-                      return (
-                        <tr key={posId} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
-                          <td style={{ verticalAlign: 'middle', padding: '10px 0' }}>
-                            <div className="flex items-center gap-2.5">
-                              <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 11 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
-                              <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>{fmtPrice(p.entryPrice)}</span>
-                            </div>
-                          </td>
-                          <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
-                            <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
-                              {p._optimistic ? '—' : `${isPnlPositive ? '+' : ''}${pnlPct.toFixed(2)}%`}
-                            </span>
-                          </td>
-                          <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
-                            {isLiquidated ? (
-                              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>LIQUIDATED</span>
-                            ) : closingPositionIds.has(posId) ? (
-                              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CLOSING...</span>
-                            ) : p._optimistic ? (
-                              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(59,130,246,0.2)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PENDING...</span>
-                            ) : (
-                              <button
-                                className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
-                                onClick={() => {
-                                  setClosingPositionIds(prev => new Set([...prev, posId]));
-                                  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                                    wsRef.current.send(JSON.stringify({ type: 'CLOSE_POSITION', positionId: posId, price: Math.floor(cur * 1e5) }));
-                                  } else {
-                                    alert('Not connected to trading server.');
-                                    setClosingPositionIds(prev => { const n = new Set(prev); n.delete(posId); return n; });
-                                  }
-                                }}
-                              >Close</button>
-                            )}
-                          </td>
-                        </tr>
+                    {(() => {
+                      // Filter optimistic: hapus jika real position sudah masuk dari chain
+                      const realTraders = new Set(openPositions.map((p: any) => p.trader?.toLowerCase()));
+                      const filteredOptimistic = optimisticPositions.filter(
+                        op => !realTraders.has(op.trader?.toLowerCase())
                       );
-                    })}
+                      return [...openPositions, ...filteredOptimistic].map((p: any) => {
+                        const pnlIdx = ids.findIndex(id => id === p.positionId);
+                        const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
+                        const posId  = p.positionId.toString();
+                        const entry  = Number(p.entryPrice) / 1e5;
+                        const margin = Number(p.margin) / 1e6;
+                        const lev    = Number(p.leverage);
+                        const isWipedOut = wipedOutIds.has(posId);
+                        const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
+                        // Optimistic: PnL starts live from 0 using current price
+                        const livePnl = isWipedOut ? -margin : (entry > 0 ? (priceDiff / entry) * (margin * lev) : 0);
+                        const rawPnl  = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
+                        const displayPnl    = isWipedOut ? -margin : Math.max(rawPnl, -margin);
+                        const isPnlPositive = displayPnl >= 0;
+                        const pnlPct        = Math.max((displayPnl / margin) * 100, -100);
+                        const liqPrice    = Number(p.liquidationPrice) / 1e5;
+                        // Never liquidate optimistic positions on frontend
+                        const isUnderwater = !p._optimistic && (p.isLong ? (cur <= liqPrice) : (cur >= liqPrice));
+                        const isLiquidated = !p._optimistic && (isWipedOut || isUnderwater);
+                        return (
+                          <tr key={posId} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
+                            <td style={{ verticalAlign: 'middle', padding: '10px 0' }}>
+                              <div className="flex items-center gap-2.5">
+                                <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 11 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
+                                <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>{fmtPrice(p.entryPrice)}</span>
+                              </div>
+                            </td>
+                            <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
+                              <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
+                                {isPnlPositive ? '+' : ''}{pnlPct.toFixed(2)}%
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                              {isLiquidated ? (
+                                <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>LIQUIDATED</span>
+                              ) : closingPositionIds.has(posId) ? (
+                                <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CLOSING...</span>
+                              ) : (
+                                <button
+                                  className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
+                                  disabled={!!p._optimistic}
+                                  onClick={() => {
+                                    if (p._optimistic) return;
+                                    setClosingPositionIds(prev => new Set([...prev, posId]));
+                                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                                      wsRef.current.send(JSON.stringify({ type: 'CLOSE_POSITION', positionId: posId, price: Math.floor(cur * 1e5) }));
+                                    } else {
+                                      alert('Not connected to trading server.');
+                                      setClosingPositionIds(prev => { const n = new Set(prev); n.delete(posId); return n; });
+                                    }
+                                  }}
+                                >{p._optimistic ? '...' : 'Close'}</button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               ) : (
