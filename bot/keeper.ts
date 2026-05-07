@@ -507,27 +507,35 @@ async function doLiquidate(id: string, pos: any) {
   liquidating.add(id);
 
   try {
-    const ok = await publicClient.readContract({
-      address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI,
-      functionName: "checkLiquidation", args: [pos.positionId],
-    }) as boolean;
+    log(`🔥 Liquidating #${id} | forcing price to ${pos.liquidationPrice} to guarantee execution`);
+    
+    // Get pending nonce to ensure both txs are queued sequentially
+    const nonce = await publicClient.getTransactionCount({ address: account.address, blockTag: 'pending' });
 
-    if (!ok) {
-      liquidating.delete(id);
-      return;
-    }
+    // 1. Force the RoundEngine to see the exact price that triggered the liquidation (e.g., the wick)
+    const updateHash = await walletClient.writeContract({
+      address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI,
+      functionName: "updatePrice", args: [pos.liquidationPrice],
+      nonce: nonce,
+    });
 
-    log(`🔥 Liquidating #${id} | price hit threshold`);
-    const hash = await walletClient.writeContract({
+    // 2. Execute liquidation immediately after
+    const liqHash = await walletClient.writeContract({
       address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI,
       functionName: "liquidatePosition", args: [pos.positionId],
+      nonce: nonce + 1,
     });
-    log(`📤 liquidatePosition(#${id}) tx: ${hash}`);
-    await publicClient.waitForTransactionReceipt({ hash });
+
+    log(`📤 Force Price tx: ${updateHash}`);
+    log(`📤 Liquidate tx: ${liqHash}`);
+
+    await publicClient.waitForTransactionReceipt({ hash: liqHash });
+    
     openPositions.delete(id);
     liquidating.delete(id);
+    log(`✅ #${id} liquidated successfully!`);
   } catch (err: any) {
-    log(`❌ liquidatePosition(#${id}) error: ${err.message}`);
+    log(`❌ liquidatePosition(#${id}) error: ${err.shortMessage || err.message}`);
     liquidating.delete(id);
   }
 }
