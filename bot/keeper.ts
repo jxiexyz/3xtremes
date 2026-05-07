@@ -190,7 +190,10 @@ async function loadExistingPositions() {
   log("📂 Scanning chain for existing open positions...");
   try {
     const currentBlock = await publicClient.getBlockNumber();
-    const fromBlock = currentBlock > 10000n ? currentBlock - 10000n : 0n;
+    // Arc Testnet RPC limits eth_getLogs to 10,000 block range per request
+    // We use 2,000 blocks (~20 min at ~6s/block) to stay safe with 3 parallel calls
+    const SCAN_RANGE = 2000n;
+    const fromBlock = currentBlock > SCAN_RANGE ? currentBlock - SCAN_RANGE : 0n;
 
     const [opened, closed, liquidated] = await Promise.all([
       publicClient.getLogs({ address: POSITION_MANAGER_ADDRESS, event: parseAbiItem("event PositionOpened(uint256 indexed positionId, address indexed trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice)"), fromBlock }),
@@ -205,7 +208,7 @@ async function loadExistingPositions() {
     for (const l of closed) openPositions.delete((l as any).args.positionId.toString());
     for (const l of liquidated) openPositions.delete((l as any).args.positionId.toString());
 
-    log(`✅ Loaded ${openPositions.size} open positions from chain scan.`);
+    log(`✅ Loaded ${openPositions.size} open positions (scanned last ${SCAN_RANGE} blocks).`);
   } catch (err: any) {
     log(`⚠️ Load positions failed: ${err.message}`);
   }

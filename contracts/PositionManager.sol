@@ -67,6 +67,8 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
 
     mapping(uint256 => Position) public positions;
     mapping(address => uint256[]) public userPositionIds;
+    // Per-round position index — O(round_size) settlement, not O(all_positions)
+    mapping(uint256 => uint256[]) public roundPositionIds;
     uint256 public positionCounter;
 
     // Net exposure tracking (long = positive, short = negative)
@@ -268,6 +270,7 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
         });
 
         userPositionIds[msg.sender].push(positionId);
+        roundPositionIds[roundId].push(positionId);
 
         // Update exposure tracking
         userNetExposure[msg.sender] = newNetExposure;
@@ -401,6 +404,7 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
         });
 
         userPositionIds[trader].push(positionId);
+        roundPositionIds[roundId].push(positionId);
 
         userNetExposure[trader] = newNetExposure;
         if (isLong) { totalLongOI += size; } else { totalShortOI += size; }
@@ -524,20 +528,19 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice Settle all positions from a specific round at final price
-     * @dev Only closes positions that belong to this roundId
+     * @dev Iterates only over positions opened in this round (O(n_round) not O(all))
      */
     function settleRound(
         uint256 roundId,
         uint256 finalPrice
     ) external onlyRoundEngine nonReentrant {
+        uint256[] storage ids = roundPositionIds[roundId];
         uint256 settled = 0;
 
-        // NOTE: In production, maintain a per-round position list for gas efficiency
-        // For now, iterate — works fine up to ~100-200 positions
-        for (uint256 i = 1; i <= positionCounter; i++) {
-            Position storage pos = positions[i];
-            if (pos.isOpen && !pos.isLiquidated && pos.roundId == roundId) {
-                _closePositionInternal(i, finalPrice, address(0)); // address(0) = no liquidator reward
+        for (uint256 i = 0; i < ids.length; i++) {
+            Position storage pos = positions[ids[i]];
+            if (pos.isOpen && !pos.isLiquidated) {
+                _closePositionInternal(ids[i], finalPrice, address(0));
                 settled++;
             }
         }
@@ -547,15 +550,16 @@ contract PositionManager is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice Refund all open positions when round is cancelled
+     * @dev Iterates only over positions opened in this round (O(n_round) not O(all))
      */
     function cancelRound(uint256 roundId) external onlyRoundEngine nonReentrant {
+        uint256[] storage ids = roundPositionIds[roundId];
         uint256 refunded = 0;
 
-        for (uint256 i = 1; i <= positionCounter; i++) {
-            Position storage pos = positions[i];
-            if (pos.isOpen && !pos.isLiquidated && pos.roundId == roundId) {
-                // Full margin refund — no fee on cancel
-                _closePositionWithRefund(i);
+        for (uint256 i = 0; i < ids.length; i++) {
+            Position storage pos = positions[ids[i]];
+            if (pos.isOpen && !pos.isLiquidated) {
+                _closePositionWithRefund(ids[i]);
                 refunded++;
             }
         }
