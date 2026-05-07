@@ -208,7 +208,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
     if (!showLines) return;
 
     // Add lines for each active position
-    positions.forEach(p => {
+    positions.forEach((p: any) => {
       const entryPrice = Number(p.entryPrice) / 1e5;
       const liqPrice = Number(p.liquidationPrice) / 1e5;
 
@@ -383,6 +383,27 @@ export default function TradePage() {
 
   console.log("📊 TradePage Data:", { ids, openPositions: openPositions.length });
 
+  // Persistence for liquidated positions to prevent "rebirth" after settlement
+  const [wipedOutIds, setWipedOutIds] = useState<Set<string>>(new Set());
+  
+  useEffect(() => {
+    const saved = localStorage.getItem('3xtremes_liquidated_ids');
+    if (saved) {
+      try {
+        const ids = JSON.parse(saved);
+        setWipedOutIds(new Set(ids));
+      } catch (e) {}
+    }
+  }, []);
+
+  const updateWipedOutIds = (id: string) => {
+    setWipedOutIds(prev => {
+      const next = new Set([...prev, id]);
+      localStorage.setItem('3xtremes_liquidated_ids', JSON.stringify(Array.from(next)));
+      return next;
+    });
+  };
+
   const [candles, setCandles] = useState<Candle[]>([])
   const [isCandle, setIsCandle] = useState(true)
   const [countdown, setCountdown] = useState(60)
@@ -400,14 +421,16 @@ export default function TradePage() {
     return () => clearTimeout(timer)
   }, [])
 
+  const wsRef = useRef<WebSocket | null>(null);
+
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "wss://3xtremes-production.up.railway.app";
-    let ws: any = null;
     let reconnectTimeout: any;
 
     function connect() {
       console.log("Connecting to WebSocket:", wsUrl);
-      ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
       ws.onopen = () => {
         console.log("Connected to 3xtremes Live price feed!");
@@ -496,8 +519,6 @@ export default function TradePage() {
   const [showConnect, setShowConnect]   = useState(false)
   const [showWalletMenu, setShowWalletMenu] = useState(false)
 
-  // Tracks positions permanently wiped out (-100% PnL) — never unfreezes
-  const [wipedOutIds, setWipedOutIds] = useState<Set<string>>(new Set())
   // Tracks which positions already had liquidation TX fired — prevents spam
   const liquidationFiredRef = useRef<Set<string>>(new Set())
   const [mktTab, setMktTab]   = useState(0)
@@ -532,7 +553,7 @@ export default function TradePage() {
     const lastCandle = candles[candles.length - 1];
     if (!lastCandle) return;
 
-    openPositions.forEach(p => {
+    openPositions.forEach((p: any) => {
       const posId = p.positionId.toString();
 
       // Already fired liquidation for this position — skip entirely
@@ -545,25 +566,24 @@ export default function TradePage() {
       const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
       const livePnl   = (priceDiff / entry) * (margin * lev);
 
-      const hitOnWick = p.isLong
+      const isLiquidatable = p.isLong
         ? (lastCandle.low  <= liqPrice)
         : (lastCandle.high >= liqPrice);
-      const hitOnPnl  = livePnl <= -margin;
 
-      if (hitOnWick || hitOnPnl) {
-        console.log(`💀 Wipeout #${posId} — wick=${hitOnWick} pnl=${hitOnPnl.toFixed ? hitOnPnl : ''} margin=${margin}`);
+      if (isLiquidatable) {
+        console.log(`💀 Wipeout #${posId} — price=${lastCandle.close} liqPrice=${liqPrice} margin=${margin}`);
 
         // Permanently mark as wiped out → display freezes at -100%
-        setWipedOutIds(prev => new Set([...prev, posId]));
+        updateWipedOutIds(posId);
 
-        // Fire liquidation TX exactly once
+        // Fire liquidation logic locally for UI lock
         liquidationFiredRef.current.add(posId);
-        writeContract({
-          address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
-          abi: POSITION_MANAGER_ABI,
-          functionName: 'liquidatePosition',
-          args: [p.positionId],
-        });
+
+        // TRIGGER BACKEND: Tell the bot to liquidate immediately!
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'REQUEST_LIQUIDATION', positionId: posId }));
+          console.log(`📡 Reported liquidation request for #${posId} to backend`);
+        }
       }
     });
   }, [candles, openPositions, address]);
@@ -1108,11 +1128,12 @@ export default function TradePage() {
                   </thead>
                   <tbody>
                     {closedPositions.slice(0, 5).map((p: any, i: any) => {
+                      const posId       = p.positionId.toString();
                       const margin      = Number(p.margin) / 1e6;
                       const realizedPnl = Number(p.realizedPnL) / 1e6;
-                      const isLiq       = p.isLiquidated;
                       const pnlPct      = margin > 0 ? (realizedPnl / margin) * 100 : 0;
-                      const isPnlPos    = realizedPnl >= 0;
+                      const isLiq       = p.isLiquidated || pnlPct <= -100 || wipedOutIds.has(posId);
+                      const isPnlPos    = realizedPnl >= 0 && !wipedOutIds.has(posId);
 
                       return (
                         <tr key={i}>

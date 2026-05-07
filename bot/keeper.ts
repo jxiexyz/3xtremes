@@ -76,6 +76,16 @@ wss.on("connection", (ws) => {
     }
   }, 15000);
 
+  ws.on("message", (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === "REQUEST_LIQUIDATION") {
+        log(`📢 Liquidation request relayed for #${msg.positionId}`);
+        broadcast(msg);
+      }
+    } catch (e) {}
+  });
+
   ws.on("close", () => {
     clearInterval(pingInterval);
     wsClients.delete(ws);

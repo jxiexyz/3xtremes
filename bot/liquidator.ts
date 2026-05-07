@@ -258,6 +258,16 @@ function connectToKeeper() {
           log(`🏁 Round #${msg.roundId} settled`);
           // DO NOT CLEAR openPositions! Let the events (PositionClosed) do the work.
           break;
+        case "REQUEST_LIQUIDATION":
+          const posId = msg.positionId.toString();
+          const targetPos = openPositions.get(posId);
+          if (targetPos) {
+            log(`🎯 Manual trigger for #${posId} received from frontend`);
+            // Fire checkAndLiquidate with current known high/low to force attempt
+            // Bot will still do on-chain checkLiquidation() for safety
+            await checkAndLiquidate(Number(targetPos.liquidationPrice), Number(targetPos.liquidationPrice));
+          }
+          break;
       }
     } catch { }
   });

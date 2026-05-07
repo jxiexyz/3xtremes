@@ -41,6 +41,8 @@ export const POSITION_MANAGER_ABI = [
     ]}] },
   { name: 'getUnrealizedPnL', type: 'function', stateMutability: 'view',
     inputs: [{ name: 'positionId', type: 'uint256' }], outputs: [{ type: 'int256' }] },
+  { name: 'liquidatePosition', type: 'function', stateMutability: 'nonpayable',
+    inputs: [{ name: 'positionId', type: 'uint256' }], outputs: [] },
 ] as const
 
 
