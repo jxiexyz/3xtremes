@@ -1,20 +1,16 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  const PM_ADDRESS = "0x478c4978b7d205702E02BD299f89d5D4D4c8C69A";
-  const pm = await ethers.getContractAt("PositionManager", PM_ADDRESS);
-  
-  console.log("📏 Current Max Position Size checking...");
-  // 1,000,000,000,000 = 1,000,000 USCC (6 decimals)
-  const tx = await pm.setMaxPositionSize(BigInt("1000000000000"), {
-    gasPrice: ethers.parseUnits("50", "gwei")
-  });
+  const PM_ADDR = "0xaf71EB8a82c782724154e21A08a45CB1bfE2e73c";
+  const NEW_MAX = ethers.parseUnits("100000000", 6); // 100 Million USDC
+
+  console.log("📏 Updating Max Position Size to 100M USDC...");
+  const pm = await ethers.getContractAt("PositionManager", PM_ADDR);
+  const tx = await pm.setMaxPositionSize(NEW_MAX, { gasPrice: ethers.parseUnits("100", "gwei") });
   await tx.wait();
   
-  console.log("✅ Max Position Size updated to 1,000,000 USCC!");
+  const currentMax = await pm.maxPositionSize();
+  console.log(`✅ Success! Current Max: ${ethers.formatUnits(currentMax, 6)} USDC`);
 }
 
-main().catch(error => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main().catch(console.error);

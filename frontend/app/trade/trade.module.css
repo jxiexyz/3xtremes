@@ -395,7 +395,7 @@
 .tbl td { padding: 6px 0; font-size: 11px; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tbl tr:hover td { color: #fff; }
 
-.obWrap { display: flex; gap: 12px; flex: 1; overflow: hidden; min-height: 0; }
+.obWrap { display: flex; flex-direction: column; gap: 12px; flex: 1; overflow-y: auto; min-height: 0; }
 .obSide { flex: 1; overflow: auto; min-width: 0; }
 .obSide::-webkit-scrollbar { width: 0; height: 0; }
 

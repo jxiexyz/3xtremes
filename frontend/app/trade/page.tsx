@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { keepPreviousData } from '@tanstack/react-query'
 import { useReadContract, useReadContracts, useWriteContract, useAccount } from 'wagmi'
 import { CONTRACTS, CREDIT_VAULT_ABI, POSITION_MANAGER_ABI } from '../../lib/contracts'
 import ConnectButton from '../../components/wallet/ConnectButton'
@@ -56,7 +57,7 @@ function seedCandles(n: number): Candle[] {
   return list
 }
 
-function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle: boolean, positions: any[] }) {
+function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[], isCandle: boolean, positions: any[], showLines: boolean }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -196,14 +197,17 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
 
   useEffect(() => {
     if (!seriesRef.current) return;
-    
-    // Clear old lines
+
+    // Clear old lines always first
     priceLinesRef.current.forEach(l => {
       try { seriesRef.current.removePriceLine(l); } catch (e) {}
     });
     priceLinesRef.current = [];
 
-    // Add new lines for each active position
+    // Hide lines when round is settling — stop here, don't re-add
+    if (!showLines) return;
+
+    // Add lines for each active position
     positions.forEach(p => {
       const entryPrice = Number(p.entryPrice) / 1e5;
       const liqPrice = Number(p.liquidationPrice) / 1e5;
@@ -223,7 +227,7 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
       if (liqPrice > 0) {
         const liqLine = seriesRef.current.createPriceLine({
           price: liqPrice,
-          color: '#f97316', 
+          color: '#f97316',
           lineWidth: 1,
           lineStyle: 3, // Dotted
           axisLabelVisible: true,
@@ -233,8 +237,8 @@ function TradingChart({ data, isCandle, positions }: { data: Candle[], isCandle:
       }
     });
 
-    console.log("🎨 Chart Redrawn with positions:", positions.length);
-  }, [positions, isCandle]); // Removed 'cur' to fix ReferenceError
+    console.log("🎨 Chart price lines:", positions.length, "| showLines:", showLines);
+  }, [positions, isCandle, showLines]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -363,12 +367,12 @@ export default function TradePage() {
 
   const { data: positionsRaw } = useReadContracts({
     contracts: ids.map(id => ({ address: CONTRACTS.POSITION_MANAGER as `0x${string}`, abi: POSITION_MANAGER_ABI, functionName: 'getPosition', args: [id] })),
-    query: { enabled: ids.length > 0, refetchInterval: 6_000 },
+    query: { enabled: ids.length > 0, refetchInterval: 6_000, placeholderData: keepPreviousData },
   })
 
   const { data: pnlsRaw } = useReadContracts({
     contracts: ids.map(id => ({ address: CONTRACTS.POSITION_MANAGER as `0x${string}`, abi: POSITION_MANAGER_ABI, functionName: 'getUnrealizedPnL', args: [id] })),
-    query: { enabled: ids.length > 0, refetchInterval: 3_000 },
+    query: { enabled: ids.length > 0, refetchInterval: 3_000, placeholderData: keepPreviousData },
   })
 
   const { writeContract } = useWriteContract()
@@ -491,6 +495,11 @@ export default function TradePage() {
   const [showWithdraw, setShowWithdraw] = useState(false)
   const [showConnect, setShowConnect]   = useState(false)
   const [showWalletMenu, setShowWalletMenu] = useState(false)
+
+  // Tracks positions permanently wiped out (-100% PnL) — never unfreezes
+  const [wipedOutIds, setWipedOutIds] = useState<Set<string>>(new Set())
+  // Tracks which positions already had liquidation TX fired — prevents spam
+  const liquidationFiredRef = useRef<Set<string>>(new Set())
   const [mktTab, setMktTab]   = useState(0)
   const [orderTab, setOrderTab] = useState(0)
   const [chartTf, setChartTf] = useState('1s Time frame')
@@ -514,8 +523,9 @@ export default function TradePage() {
   const isExceedsBalance = !!address && totalRequired > balance
   const isOrderDisabled = isInvalidMargin || isExceedsBalance
 
-  // Auto-Liquidation Trigger (Frontend Safety Net)
-  // Sensitive to "wicks" (High/Low) to ensure flash-crashes are caught
+  // Wipeout Detection + Auto-Liquidation
+  // Once a position hits -100% (via wick OR PnL), it's permanently frozen
+  // and liquidation TX fires ONCE (not every candle tick)
   useEffect(() => {
     if (!address || openPositions.length === 0 || candles.length === 0) return;
 
@@ -523,12 +533,31 @@ export default function TradePage() {
     if (!lastCandle) return;
 
     openPositions.forEach(p => {
-      const liqPrice = Number(p.liquidationPrice) / 1e5;
-      // Check if the candle's range (Low for Long, High for Short) hit the Liq price
-      const hitOnWick = p.isLong ? (lastCandle.low <= liqPrice) : (lastCandle.high >= liqPrice);
-      
-      if (hitOnWick) {
-        console.log(`💀 Wick hit Liquidation! Triggering # ${p.positionId}...`);
+      const posId = p.positionId.toString();
+
+      // Already fired liquidation for this position — skip entirely
+      if (liquidationFiredRef.current.has(posId)) return;
+
+      const liqPrice  = Number(p.liquidationPrice) / 1e5;
+      const entry     = Number(p.entryPrice) / 1e5;
+      const margin    = Number(p.margin) / 1e6;
+      const lev       = Number(p.leverage);
+      const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
+      const livePnl   = (priceDiff / entry) * (margin * lev);
+
+      const hitOnWick = p.isLong
+        ? (lastCandle.low  <= liqPrice)
+        : (lastCandle.high >= liqPrice);
+      const hitOnPnl  = livePnl <= -margin;
+
+      if (hitOnWick || hitOnPnl) {
+        console.log(`💀 Wipeout #${posId} — wick=${hitOnWick} pnl=${hitOnPnl.toFixed ? hitOnPnl : ''} margin=${margin}`);
+
+        // Permanently mark as wiped out → display freezes at -100%
+        setWipedOutIds(prev => new Set([...prev, posId]));
+
+        // Fire liquidation TX exactly once
+        liquidationFiredRef.current.add(posId);
         writeContract({
           address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
           abi: POSITION_MANAGER_ABI,
@@ -668,7 +697,7 @@ export default function TradePage() {
                 </div>
               ) : (
                 <>
-                  <TradingChart data={candles} isCandle={isCandle} positions={openPositions} />
+                  <TradingChart data={candles} isCandle={isCandle} positions={openPositions} showLines={roundStatus === "Active"} />
                   
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
@@ -748,9 +777,9 @@ export default function TradePage() {
 
             <div style={{ marginBottom: '32px' }}>
               <div className={styles.leverageRow}>
-                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Leverage</span>
+                <span className="text-xs font-medium text-white/50">Leverage</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="text-lg font-bold text-white tabular-nums">{leverage}x</span>
+                  <span className="text-lg font-bold text-white">{leverage}x</span>
                   {leverage >= 1000 && (
                     <span style={{ fontSize: 10, color: leverage >= 5000 ? '#ef4444' : '#f59e0b', fontWeight: 800, padding: '2px 6px', background: leverage >= 5000 ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)', borderRadius: 4 }}>
                       HIGH RISK
@@ -778,32 +807,32 @@ export default function TradePage() {
 
             <div className="flex flex-col gap-4 mb-9">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Order Value</span>
-                <span className="text-base font-semibold text-white/90 tabular-nums">{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
+                <span className="text-xs font-medium text-white/50">Order Value</span>
+                <span className="text-base font-semibold text-white/90">{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Opening Fee (0.01%)</span>
-                <span className="text-base font-semibold text-white/70 tabular-nums">{openFee.toFixed(2)} USCC</span>
+                <span className="text-xs font-medium text-white/50">Opening Fee (0.01%)</span>
+                <span className="text-base font-semibold text-white/70">{openFee.toFixed(2)} USCC</span>
               </div>
               <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">
-                <span className="text-xs font-bold text-white/60 tracking-wide uppercase">Total Required</span>
-                <span className={`text-base font-bold tabular-nums ${isExceedsBalance ? 'text-rose-500' : 'text-white'}`}>{totalRequired.toFixed(2)} USCC</span>
+                <span className="text-xs font-bold text-white/60">Total Required</span>
+                <span className={`text-base font-bold ${isExceedsBalance ? 'text-rose-500' : 'text-white'}`}>{totalRequired.toFixed(2)} USCC</span>
               </div>
               <div className={styles.divider} style={{ margin: '8px 0', opacity: 0.2 }} />
               <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Est. Liq Price</span>
-                <span className="text-base font-semibold text-white/90 tabular-nums">{estLiq.toFixed(5)}</span>
+                <span className="text-xs font-medium text-white/50">Est. Liq Price</span>
+                <span className="text-base font-semibold text-white/90">{estLiq.toFixed(5)}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Slippage</span>
-                <span className="text-base font-semibold text-emerald-400 tabular-nums">0.00%</span>
+                <span className="text-xs font-medium text-white/50">Slippage</span>
+                <span className="text-base font-semibold text-emerald-400">0.00%</span>
               </div>
             </div>
 
             {/* Round Countdown */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span className="text-xs font-medium text-white/50 tracking-wide uppercase">Round Closes In</span>
+                <span className="text-xs font-medium text-white/50">Round Closes In</span>
                 {roundStatus !== "Active" ? (
                   <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 uppercase animate-pulse">
                     <Loader2 size={12} className="animate-spin" />
@@ -811,7 +840,6 @@ export default function TradePage() {
                   </span>
                 ) : (
                   <span style={{
-                    fontFamily: "'JetBrains Mono', monospace",
                     fontSize: 14,
                     fontWeight: 700,
                     color: countdown <= 10 ? '#ff3b30' : '#00e676',
@@ -843,22 +871,19 @@ export default function TradePage() {
 
             <div style={{ marginTop: 'auto' }}>
               <button 
-                disabled={address ? (isOrderDisabled || isTxPending) : false}
+                disabled={address ? (isOrderDisabled || isTxPending || countdown <= 7) : false}
                 className={`w-full py-4 rounded-xl text-[15px] font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${
                   !address 
                     ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_20px_rgba(37,99,235,0.25)]' 
                     : isTxPending
                       ? 'bg-white/[0.05] text-white/70 cursor-not-allowed border border-white/[0.05]'
-                      : isOrderDisabled
-                        ? 'bg-white/[0.03] text-white/30 cursor-not-allowed border border-white/[0.05]'
+                      : (isOrderDisabled || countdown <= 7)
+                        ? 'bg-white/[0.03] text-white/20 cursor-not-allowed border border-white/[0.05]'
                         : side === 'buy' ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_20px_rgba(16,185,129,0.25)]' : 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_4px_20px_rgba(244,63,94,0.25)]'
                 }`} 
                 onClick={() => {
                   if (!address) return setShowConnect(true)
-                  if (isOrderDisabled) {
-                    console.log("Order disabled state:", { isInvalidMargin, isExceedsBalance, marginNum, balance });
-                    return;
-                  }
+                  if (isOrderDisabled || countdown <= 7) return;
                   if (isTxPending) return;
                   
                   setIsTxPending(true)
@@ -899,6 +924,8 @@ export default function TradePage() {
                   <><Loader2 size={18} className="animate-spin" /> CONFIRMING...</>
                 ) : !address ? (
                   "CONNECT WALLET"
+                ) : countdown <= 7 ? (
+                  "ROUND LOCKED"
                 ) : isExceedsBalance ? (
                   "INSUFFICIENT BALANCE"
                 ) : isInvalidMargin ? (
@@ -906,7 +933,7 @@ export default function TradePage() {
                 ) : (
                   `OPEN ${side.toUpperCase()}`
                 )}
-                {(!isOrderDisabled || !address) && !isTxPending && <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />}
+                {(!isOrderDisabled && !address && countdown > 7) && !isTxPending && <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />}
               </button>
             </div>
           </div>
@@ -914,12 +941,57 @@ export default function TradePage() {
           <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.runCard}`}>
             <div className={styles.cardTitle}>Summary</div>
             <table className={styles.tbl}>
-              <thead>
-                <tr><th>Metric</th><th style={{ textAlign: 'right' }}>Value</th></tr>
-              </thead>
               <tbody>
-                <tr><td>Open Positions</td><td style={{ textAlign: 'right' }}>{openPositions.length}</td></tr>
-                <tr><td>Total Margin</td><td style={{ textAlign: 'right' }}>{openPositions.reduce((acc: number, p: any) => acc + Number(p.margin) / 1e6, 0).toFixed(2)} USCC</td></tr>
+                {(() => {
+                  const wins   = closedPositions.filter((p: any) => !p.isLiquidated && Number(p.realizedPnL) > 0);
+                  const losses = closedPositions.filter((p: any) => p.isLiquidated || Number(p.realizedPnL) <= 0);
+                  const totalProfit = wins.reduce((acc: number, p: any) => acc + Number(p.realizedPnL) / 1e6, 0);
+                  const totalLoss   = losses.reduce((acc: number, p: any) => acc + Math.abs(Number(p.realizedPnL)) / 1e6, 0);
+                  const winrate     = closedPositions.length > 0 ? (wins.length / closedPositions.length) * 100 : 0;
+                  return (
+                    <>
+                      <tr>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Balance</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
+                          <span style={{ color: '#fff' }}>{balance.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Total Profit</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
+                          <span style={{ color: totalProfit > 0 ? '#10b981' : 'rgba(255,255,255,0.4)' }}>{totalProfit > 0 ? '+' : ''}{totalProfit.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Total Loss</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
+                          <span style={{ color: totalLoss > 0 ? '#ef4444' : 'rgba(255,255,255,0.4)' }}>{totalLoss > 0 ? '-' : ''}{totalLoss.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Win Rate</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.25)' }}>
+                          <span style={{ color: winrate >= 50 ? '#10b981' : winrate > 0 ? '#f59e0b' : 'rgba(255,255,255,0.4)' }}>
+                            {closedPositions.length > 0 ? `${winrate.toFixed(0)}%` : '—'}
+                          </span>
+                          {closedPositions.length > 0 && <span style={{ fontWeight: 400, fontSize: 10 }}> ({wins.length}/{closedPositions.length})</span>}
+                        </td>
+                      </tr>
+                      <tr style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, paddingTop: 8 }}>All Time</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 13, paddingTop: 8, color: 'rgba(255,255,255,0.3)' }}>
+                          {closedPositions.length > 0 ? (
+                            <>
+                              <span style={{ color: (totalProfit - totalLoss) > 0 ? '#10b981' : (totalProfit - totalLoss) < 0 ? '#ef4444' : 'rgba(255,255,255,0.4)' }}>
+                                {(totalProfit - totalLoss) >= 0 ? '+' : ''}{Math.abs(totalProfit - totalLoss).toFixed(2)}
+                              </span> <span style={{ fontWeight: 500 }}>USCC</span>
+                            </>
+                          ) : <span style={{ color: 'rgba(255,255,255,0.4)' }}>—</span>}
+                        </td>
+                      </tr>
+                    </>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
@@ -931,76 +1003,80 @@ export default function TradePage() {
                   <div className="flex flex-col gap-3 pt-2 w-full px-4">
                     {Array.from({ length: 3 }).map((_, i) => <SkeletonLine key={i} height="40px" />)}
                   </div>
+              ) : roundStatus !== "Active" ? (
+                <div className="w-full h-full">
+                  <EmptyState icon={Wallet} title="Round Settling" desc="Positions are being settled. Next round starting soon." />
+                </div>
               ) : openPositions.length > 0 ? (
                 <table className={styles.tbl}>
                   <thead>
-                    <tr><th>Side/Entry</th><th>PnL (USCC)</th><th style={{ textAlign: 'right' }}>Action</th></tr>
+                    <tr><th>Side/Entry</th><th>PNL</th><th style={{ textAlign: 'right' }}>Action</th></tr>
                   </thead>
                   <tbody>
                     {openPositions.map((p: any) => {
                       // Find real-time PnL from contract data
                       const pnlIdx = ids.findIndex(id => id === p.positionId);
                       const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
-                      
+
                       // Calculate LIVE frontend PnL for smoothness
-                      const entry = Number(p.entryPrice) / 1e5;
+                      const posId  = p.positionId.toString();
+                      const entry  = Number(p.entryPrice) / 1e5;
                       const margin = Number(p.margin) / 1e6;
-                      const lev = Number(p.leverage);
-                      
+                      const lev    = Number(p.leverage);
+
+                      // If permanently wiped out — freeze PnL at -100%, don't recalculate
+                      const isWipedOut = wipedOutIds.has(posId);
+
                       const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
-                      const livePnl = (priceDiff / entry) * (margin * lev);
-                      
-                      // Use livePnl for display, fall back to contract if something is weird
-                      const displayPnl = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
+                      const livePnl   = isWipedOut ? -margin : (priceDiff / entry) * (margin * lev);
+                      const rawPnl    = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
+
+                      // ISOLATED MARGIN: cap at -100%, locked forever once wiped out
+                      const displayPnl    = isWipedOut ? -margin : Math.max(rawPnl, -margin);
                       const isPnlPositive = displayPnl >= 0;
-                      
-                      const liqPrice = Number(p.liquidationPrice) / 1e5;
+                      const pnlPct        = Math.max((displayPnl / margin) * 100, -100);
+
+                      const liqPrice    = Number(p.liquidationPrice) / 1e5;
                       const isUnderwater = p.isLong ? (cur <= liqPrice) : (cur >= liqPrice);
 
+                      // isLiquidated = either price-based OR PnL-based wipeout
+                      const isLiquidated = isWipedOut || isUnderwater;
+
                       return (
-                        <tr key={p.positionId.toString()} style={isUnderwater ? { background: 'rgba(239, 68, 68, 0.05)' } : {}}>
-                          <td style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <div className="flex items-center gap-2">
-                              <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 10 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
-                              {isUnderwater && <span className="animate-pulse bg-rose-500 text-white text-[8px] px-1 rounded font-bold">LIQUIDATABLE</span>}
-                            </div>
-                            <span style={{ fontFamily: 'var(--mono)', fontSize: 13 }}>{fmtPrice(p.entryPrice)}</span>
-                          </td>
-                          <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444' }}>
-                            <div className="flex flex-col">
-                              <span style={{ fontWeight: 800, fontSize: 15 }}>{isPnlPositive ? '+' : ''}{((displayPnl / margin) * 100).toFixed(2)}%</span>
-                              <span style={{ fontSize: 10, opacity: 0.6 }}>{isPnlPositive ? '+' : ''}{displayPnl.toFixed(2)} USCC</span>
+                        <tr key={p.positionId.toString()} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
+                          <td style={{ verticalAlign: 'middle', padding: '10px 0' }}>
+                            <div className="flex items-center gap-2.5">
+                              <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 11 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
+                              <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>{fmtPrice(p.entryPrice)}</span>
                             </div>
                           </td>
-                          <td style={{ textAlign: 'right' }}>
-                            {isUnderwater ? (
-                               <button 
-                                 className="bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors shadow-[0_0_15px_rgba(225,29,72,0.4)]"
-                                 onClick={() => {
-                                   writeContract({
-                                     address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
-                                     abi: POSITION_MANAGER_ABI,
-                                     functionName: 'liquidatePosition',
-                                     args: [p.positionId],
-                                   });
-                                 }}
-                               >
-                                 Force Liq
-                               </button>
+                          <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
+                            <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
+                              {isPnlPositive ? '+' : ''}{pnlPct.toFixed(2)}%
+                            </span>
+                          </td>
+                          <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                            {isLiquidated ? (
+                              <span style={{
+                                fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
+                                background: 'rgba(239,68,68,0.2)', color: '#ef4444',
+                                border: '1px solid rgba(239,68,68,0.4)',
+                                textTransform: 'uppercase', letterSpacing: '0.05em'
+                              }}>LIQUIDATED</span>
                             ) : (
-                               <button 
-                                 className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
-                                 onClick={() => {
-                                   writeContract({
-                                     address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
-                                     abi: POSITION_MANAGER_ABI,
-                                     functionName: 'closePosition',
-                                     args: [p.positionId],
-                                   });
-                                 }}
-                               >
-                                 Close
-                               </button>
+                              <button
+                                className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
+                                onClick={() => {
+                                  writeContract({
+                                    address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
+                                    abi: POSITION_MANAGER_ABI,
+                                    functionName: 'closePosition',
+                                    args: [p.positionId],
+                                  });
+                                }}
+                              >
+                                Close
+                              </button>
                             )}
                           </td>
                         </tr>
@@ -1026,14 +1102,44 @@ export default function TradePage() {
                   {Array.from({ length: 2 }).map((_, i) => <SkeletonLine key={i} height="32px" />)}
                 </div>
               ) : closedPositions.length > 0 ? (
-                closedPositions.slice(0, 3).map((p: any, i: any) => (
-                  <div key={i} className={styles.orderRow}>
-                    <span style={{ fontFamily: 'var(--mono)', color: 'rgba(255,255,255,0.8)' }}>{fmtPrice(p.entryPrice)}</span>
-                    <span style={{ color: 'var(--muted)' }}>{fmtUscc(p.margin)} USCC</span>
-                    <span style={{ color: p.isLong ? 'var(--blue)' : 'var(--red)', fontSize: 10, fontWeight: 700 }}>{p.isLong ? 'Long' : 'Short'}</span>
-                    <span className={styles.closeX}>×</span>
-                  </div>
-                ))
+                <table className={styles.tbl}>
+                  <thead>
+                    <tr><th>Result</th><th>Margin</th><th style={{ textAlign: 'right' }}>Side</th></tr>
+                  </thead>
+                  <tbody>
+                    {closedPositions.slice(0, 5).map((p: any, i: any) => {
+                      const margin      = Number(p.margin) / 1e6;
+                      const realizedPnl = Number(p.realizedPnL) / 1e6;
+                      const isLiq       = p.isLiquidated;
+                      const pnlPct      = margin > 0 ? (realizedPnl / margin) * 100 : 0;
+                      const isPnlPos    = realizedPnl >= 0;
+
+                      return (
+                        <tr key={i}>
+                          <td style={{ verticalAlign: 'middle', padding: '8px 0' }}>
+                            {isLiq ? (
+                              <span style={{ fontSize: 11, fontWeight: 800, color: '#ef4444', fontFamily: 'var(--mono)' }}>
+                                LIQUIDATED
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: 12, fontWeight: 800, fontFamily: 'var(--mono)', color: isPnlPos ? '#10b981' : '#ef4444' }}>
+                                {isPnlPos ? '+' : ''}{pnlPct.toFixed(2)}%
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ verticalAlign: 'middle', color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>
+                            {fmtUscc(p.margin)} USCC
+                          </td>
+                          <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                            <span style={{ color: p.isLong ? 'var(--blue)' : 'var(--red)', fontSize: 10, fontWeight: 700 }}>
+                              {p.isLong ? 'Long' : 'Short'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               ) : (
                 <EmptyState icon={Settings} title="No History" desc="Your past trades and closed positions will be listed here." />
               )}
