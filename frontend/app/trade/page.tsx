@@ -379,14 +379,6 @@ export default function TradePage() {
   const [optimisticPositions, setOptimisticPositions] = useState<any[]>([]);
   const [closingPositionIds, setClosingPositionIds] = useState<Set<string>>(new Set());
 
-  const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
-  // Chart uses a filtered version, but we keep them in openPositions for the UI table
-  const openPositions = allPositions.filter((p: any) => p.isOpen && !closingPositionIds.has(p.positionId.toString()))
-  const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()))
-  const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
-
-  console.log("📊 TradePage Data:", { ids, openPositions: openPositions.length });
-
   const [wipedOutIds, setWipedOutIds] = useState<Set<string>>(new Set());
   
   useEffect(() => {
@@ -398,6 +390,12 @@ export default function TradePage() {
       } catch (e) {}
     }
   }, []);
+
+  const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
+  // Chart uses a filtered version, but we keep them in openPositions for the UI table
+  const openPositions = allPositions.filter((p: any) => p.isOpen && !closingPositionIds.has(p.positionId.toString()))
+  const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()))
+  const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
   const updateWipedOutIds = (id: string) => {
     setWipedOutIds(prev => {
