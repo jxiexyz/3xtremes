@@ -357,7 +357,7 @@ async function startRoundOnChain() {
       address: ROUND_ENGINE_ADDRESS,
       abi: ROUND_ENGINE_ABI,
       functionName: "startRound",
-      gas: 500000n, // Bypass simulation
+      gas: 3000000n, // Bypass simulation with higher limit
     })
   );
 
@@ -384,7 +384,7 @@ async function startRound() {
       address: ROUND_ENGINE_ADDRESS,
       abi: ROUND_ENGINE_ABI,
       functionName: "startRound",
-      gas: 500000n, // Bypass simulation
+      gas: 3000000n, // Bypass simulation with higher limit
     })
   );
 
@@ -523,7 +523,7 @@ async function settleOnChain(roundId: number, finalPrice: number) {
         abi: ROUND_ENGINE_ABI,
         functionName: "settleRound",
         args: [BigInt(Math.floor(finalPrice))],
-        gas: 500000n, // Bypass simulation
+        gas: 3000000n, // Bypass simulation with higher limit for batch settlements
       })
     );
 
