@@ -463,11 +463,9 @@ export default function TradePage() {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "POSITION_CONFIRMED") {
-            // Tx submitted — just clear pending state & show success
-            // Optimistic position stays visible; real data from contract polling replaces it
-            setIsTxPending(false);
-            setTradeSuccess(true);
-            setTimeout(() => setTradeSuccess(false), 3000);
+            // On-chain tx submitted — already handled optimistically at click time
+            // Just log, no UI change needed
+            console.log('✅ POSITION_CONFIRMED from bot:', msg.tx);
 
           } else if (msg.type === "POSITION_FAILED") {
             // Rollback: remove ALL optimistic positions for this trader
@@ -1013,7 +1011,10 @@ export default function TradePage() {
                       leverage: parsedLev,
                       price: rawPrice,
                     }));
-                    console.log('📡 Sent OPEN_POSITION to bot via WS');
+                    // ✅ Posisi sudah tampil optimistic — tombol langsung unlock
+                    setIsTxPending(false);
+                    setTradeSuccess(true);
+                    setTimeout(() => setTradeSuccess(false), 2000);
                   } else {
                     alert('Not connected to trading server. Please refresh.');
                     setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== optKey));
@@ -1021,20 +1022,21 @@ export default function TradePage() {
                   }
                 }}
               >
-                {isTxPending ? (
+                {/* Button label — countdown lock takes highest priority */}
+                {countdown <= 7 && address ? (
+                  'ROUND LOCKED'
+                ) : isTxPending ? (
                   <><Loader2 size={18} className="animate-spin" /> EXECUTING...</>
                 ) : !address ? (
-                  "CONNECT WALLET"
-                ) : countdown <= 7 ? (
-                  "ROUND LOCKED"
+                  'CONNECT WALLET'
                 ) : isExceedsBalance ? (
-                  "INSUFFICIENT BALANCE"
+                  'INSUFFICIENT BALANCE'
                 ) : isInvalidMargin ? (
-                  "INVALID MARGIN"
+                  'INVALID MARGIN'
                 ) : (
-                  `OPEN ${side.toUpperCase()}`
+                  `OPEN ${side === 'buy' ? 'LONG' : 'SHORT'}`
                 )}
-                {(!isOrderDisabled && !address && countdown > 7) && !isTxPending && <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />}
+                {(!isOrderDisabled && !!address && countdown > 7) && !isTxPending && <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />}
               </button>
             </div>
           </div>
