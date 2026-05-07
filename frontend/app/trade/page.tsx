@@ -361,13 +361,13 @@ export default function TradePage() {
     abi: POSITION_MANAGER_ABI,
     functionName: 'getUserPositions',
     args: [address ?? '0x0000000000000000000000000000000000000000'],
-    query: { enabled: !!address, refetchInterval: 6_000 },
+    query: { enabled: !!address, refetchInterval: 1000 },
   })
   const ids = useMemo(() => (positionIds as bigint[] | undefined) ?? [], [positionIds])
 
   const { data: positionsRaw } = useReadContracts({
     contracts: ids.map(id => ({ address: CONTRACTS.POSITION_MANAGER as `0x${string}`, abi: POSITION_MANAGER_ABI, functionName: 'getPosition', args: [id] })),
-    query: { enabled: ids.length > 0, refetchInterval: 6_000, placeholderData: keepPreviousData },
+    query: { enabled: ids.length > 0, refetchInterval: 1000, placeholderData: keepPreviousData },
   })
 
   const { data: pnlsRaw } = useReadContracts({
