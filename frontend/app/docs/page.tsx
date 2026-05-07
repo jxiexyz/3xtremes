@@ -11,133 +11,157 @@ export default function DocsPage() {
             &lt; Back to Home
           </Link>
           <h1 className="text-4xl md:text-6xl font-black tracking-tighter mt-8 mb-4">
-            3XTREMES <span className="text-white/20">DOCS</span>
+            3XTREMES <span className="text-white/20">MASTERCLASS</span>
           </h1>
           <p className="text-lg text-white/50 font-mono">
-            The definitive masterclass on surviving the extreme leverage trading arena.
+            The definitive, comprehensive manifesto on surviving the ultimate high velocity trading arena.
           </p>
         </header>
 
-        <div className="space-y-16">
+        <div className="space-y-20">
+          
           <section>
-            <h2 className="text-2xl font-bold mb-6 text-white/90 border-b border-white/10 pb-4">
-              1. The Philosophy of 3xtremes
+            <h2 className="text-3xl font-black mb-6 text-white/90 border-b border-white/10 pb-4 tracking-tight">
+              1. The Grand Vision of 3xtremes
             </h2>
-            <div className="space-y-4 text-white/60 leading-relaxed text-lg">
+            <div className="space-y-6 text-white/60 leading-relaxed text-lg text-justify">
               <p>
-                Welcome to 3xtremes. If you are looking for traditional, slow moving, and conservative market environments, you are in the wrong place. This platform is forged for the absolute apex of risk takers. We have stripped away the noise and the waiting periods to deliver pure, unfiltered financial combat.
+                The traditional financial world is broken. It is plagued by slow execution, endless waiting periods, suffocating regulations, and markets that move at a glacial pace. 3xtremes was born out of a rebellion against this boring, sterile environment. We did not want to build just another trading platform. We wanted to build a digital colosseum. A place where the raw, unfiltered forces of supply, demand, and extreme human emotion collide in real time.
               </p>
               <p>
-                3xtremes is a hyper volatile trading arena where every single decision you make is magnified by astronomical leverage. There are no stop losses to save you. There are no multi day swing trades. You enter the arena, you predict the immediate future of the market, and you face the consequences in real time. You either multiply your capital rapidly, or you lose it all in the blink of an eye. This is trading distilled to its most terrifying and rewarding essence.
+                3xtremes is the ultimate high velocity trading arena. It is designed for those who find standard market volatility uninspiring. Here, we compress the adrenaline of a year long bull market into a single minute. We strip away the safety nets, the circuit breakers, and the margin calls to present you with a binary reality. You either possess the intuition to predict the immediate future, or you lose your capital to someone who does. This platform is not an investment tool. It is a high stakes psychological battleground where only the most disciplined and ruthless participants survive.
               </p>
             </div>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold mb-6 text-white/90 border-b border-white/10 pb-4">
-              2. Account Initialization and Capital
+            <h2 className="text-3xl font-black mb-6 text-white/90 border-b border-white/10 pb-4 tracking-tight">
+              2. The Philosophy of Absolute Volatility
             </h2>
-            <div className="space-y-4 text-white/60 leading-relaxed text-lg">
+            <div className="space-y-6 text-white/60 leading-relaxed text-lg text-justify">
               <p>
-                Before you can participate in the action, you need to prepare your account and secure your capital.
+                In standard trading, volatility is something investors fear. They hedge against it, they avoid it, and platforms actively try to suppress it to protect retail participants. At 3xtremes, volatility is our core product. We celebrate it. 
               </p>
-              <ul className="list-disc list-inside space-y-3 mt-4">
-                <li><strong className="text-white/80">Wallet Connection:</strong> Simply click the connect button on the top right of the dashboard. Your digital wallet acts as your unique identity and secure vault.</li>
-                <li><strong className="text-white/80">Acquiring USCC:</strong> The entire platform operates using USCC. You can fund your account directly through the interface to ensure you have the necessary ammunition to open positions.</li>
-                <li><strong className="text-white/80">Wallet Balance:</strong> Your available balance is displayed at the bottom of the trading panel. It updates instantly to reflect your wins, your losses, and your active margin locked in the market.</li>
-              </ul>
+              <p>
+                When you trade on 3xtremes, you must fundamentally change your relationship with risk. Because the timeline is compressed to a mere sixty seconds, the market movements are highly erratic. Prices whip back and forth violently. A position that is in deep profit can plummet to total destruction in a fraction of a second. This is intentional. The platform is engineered to test your emotional fortitude. If you panic easily, or if you hesitate when the chart violently spikes against you, this arena will drain your wallet systematically. To win here, you must embrace the chaos and learn to ride the massive tidal waves of price action without letting fear cloud your judgment.
+              </p>
             </div>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold mb-6 text-white/90 border-b border-white/10 pb-4">
-              3. Anatomy of a Sixty Second Round
+            <h2 className="text-3xl font-black mb-6 text-white/90 border-b border-white/10 pb-4 tracking-tight">
+              3. Deep Dive into the Sixty Second Loop
             </h2>
-            <div className="space-y-4 text-white/60 leading-relaxed text-lg">
+            <div className="space-y-6 text-white/60 leading-relaxed text-lg text-justify">
               <p>
-                The heartbeat of 3xtremes is the sixty second continuous loop. Time is your absolute enemy and your greatest asset. Every minute presents a completely new battleground.
+                Every single engagement on 3xtremes is strictly confined to a sixty second loop. Understanding the psychology of this timeline is what separates the veterans from the victims. Let us break down the exact anatomy of a round.
               </p>
-              <div className="bg-white/[0.03] p-6 rounded-xl border border-white/5 mt-6">
-                <h3 className="text-xl font-bold text-white/80 mb-2">The Action Phase (Seconds 60 down to 6)</h3>
-                <p>During the vast majority of the round, the market is fully liquid and chaotic. You are free to open as many Long or Short positions as your balance permits. The price chart will aggressively draw new candles every second, constantly shifting your open profit and loss.</p>
+              <div className="bg-white/[0.03] p-8 rounded-2xl border border-white/5 mt-8 space-y-4">
+                <h3 className="text-2xl font-bold text-white/90">The Setup Phase (Seconds 60 down to 30)</h3>
+                <p>The round begins. The chart is a blank canvas. During these initial thirty seconds, the smartest participants are simply observing. They are watching the momentum of the candles, identifying the immediate trend, and waiting for the market to reveal its hand. Amateurs jump in immediately. Professionals wait for the setup.</p>
               </div>
-              <div className="bg-white/[0.03] p-6 rounded-xl border border-white/5">
-                <h3 className="text-xl font-bold text-red-400 mb-2">The Lock Window (Seconds 5 down to 1)</h3>
-                <p>When the countdown timer hits the five second mark, the interface flashes red and the gates slam shut. The trading panel is completely disabled. No new participants can enter, and no one can leave. You are forced to watch the final price movements play out, deciding the ultimate fate of your active positions.</p>
+              <div className="bg-white/[0.03] p-8 rounded-2xl border border-white/5 space-y-4">
+                <h3 className="text-2xl font-bold text-white/90">The Chaos Phase (Seconds 29 down to 6)</h3>
+                <p>This is where the volume peaks. Participants have identified the trend and are slamming their orders into the system. The price movements become heavily exaggerated as Longs and Shorts fight for dominance. If you are entering during this phase, you must have lightning fast reflexes and unwavering conviction in your direction.</p>
               </div>
-              <div className="bg-white/[0.03] p-6 rounded-xl border border-white/5">
-                <h3 className="text-xl font-bold text-green-400 mb-2">The Resolution (Second 0)</h3>
-                <p>The timer reaches zero. The final closing price is etched into the system. All surviving positions are immediately evaluated against this final price. Winners receive their payouts instantly added to their balance, and the next sixty second round begins without a single moment of hesitation.</p>
+              <div className="bg-white/[0.03] p-8 rounded-2xl border border-white/5 space-y-4">
+                <h3 className="text-2xl font-bold text-red-400">The Lock Window (Seconds 5 down to 1)</h3>
+                <p>The climax of the round. When the timer hits five seconds, the system forcibly locks down. The execution panel is disabled. You can no longer enter or exit. Why do we do this? To ensure absolute fairness. It prevents participants from making guaranteed winning trades at the very last millisecond. During these five seconds, you are a hostage to the market. You simply watch the final candles print, hoping your prediction holds true.</p>
+              </div>
+              <div className="bg-white/[0.03] p-8 rounded-2xl border border-white/5 space-y-4">
+                <h3 className="text-2xl font-bold text-green-400">The Resolution (Second 0)</h3>
+                <p>The timer expires. The system captures the absolute final price point. All surviving positions are compared against this final mark. Payouts are instantly calculated and credited to the winners balances, while losers are permanently swept away. Without any delay, the timer resets to sixty, and the brutal cycle begins again.</p>
               </div>
             </div>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold mb-6 text-white/90 border-b border-white/10 pb-4">
-              4. Position Mechanics and Extreme Leverage
+            <h2 className="text-3xl font-black mb-6 text-white/90 border-b border-white/10 pb-4 tracking-tight">
+              4. The Mechanics of Extreme Leverage
             </h2>
-            <div className="space-y-4 text-white/60 leading-relaxed text-lg">
+            <div className="space-y-6 text-white/60 leading-relaxed text-lg text-justify">
               <p>
-                Executing a trade requires understanding the extreme multipliers at your disposal. 
+                Leverage is the undisputed king of 3xtremes. It is the tool that turns pennies into fortunes, and fortunes into dust. 
               </p>
-              <ul className="list-disc list-inside space-y-3 mt-4">
-                <li><strong className="text-white/80">Going Long:</strong> You are predicting that the price will finish higher than your exact entry point.</li>
-                <li><strong className="text-white/80">Going Short:</strong> You are predicting a market crash, betting that the final price will be lower than your entry point.</li>
-                <li><strong className="text-white/80">The Leverage Multiplier:</strong> We do not offer standard double or triple leverage. You can dial your risk from a terrifying 1,000x up to a mind bending 10,000x.</li>
-              </ul>
-              <p className="mt-4">
-                To put this into perspective: If you use ten thousand times leverage, a mere 0.01 percent movement in the market price in your favor will instantly double your money. However, that exact same microscopic movement against you will result in total annihilation.
+              <p>
+                In a normal market, predicting a price movement correctly might net you a one or two percent gain. At 3xtremes, we offer leverage scaling from 1,000x up to an incomprehensible 10,000x. To understand the gravity of this, consider the mathematics. If you deploy a margin of just ten dollars at 10,000x leverage, you are effectively commanding one hundred thousand dollars of market purchasing power. 
+              </p>
+              <p>
+                Because your purchasing power is artificially inflated to such massive proportions, the market only needs to move a microscopic fraction of a percentage point in your favor for you to double or triple your original ten dollar margin. The visual representation of profit on your screen will accelerate so fast it becomes a blur. However, the exact opposite is true. That same microscopic movement against your prediction will instantly erase your entire margin. Leverage is a double edged sword, and we hand you the sharpest blade in existence. 
               </p>
             </div>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold mb-6 text-white/90 border-b border-white/10 pb-4">
-              5. The Absolute Liquidation Rule
+            <h2 className="text-3xl font-black mb-6 text-white/90 border-b border-white/10 pb-4 tracking-tight">
+              5. The Psychology of the Instant Wipeout
             </h2>
-            <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-xl space-y-4">
-              <p className="text-red-400 leading-relaxed text-lg font-bold">
-                This is the most critical rule of the platform. Read carefully.
+            <div className="bg-red-500/5 border border-red-500/20 p-8 rounded-2xl space-y-6 text-justify">
+              <p className="text-red-400 leading-relaxed text-xl font-bold">
+                The Liquidation Protocol is absolute. It is the fundamental law of the arena.
               </p>
               <p className="text-red-400/80 leading-relaxed text-lg">
-                There are no margin calls. We do not do partial liquidations to save your account. 
+                Traditional brokers offer margin calls. They send you polite emails asking you to deposit more funds to save your underwater position. 3xtremes does not care about your feelings, and we do not offer second chances.
               </p>
               <p className="text-red-400/80 leading-relaxed text-lg">
-                If the real time market price moves against your position far enough that your open profit and loss reaches negative one hundred percent, you are dead. It does not matter if the price bounces back a millisecond later. It does not matter if the round ends in profit. The moment that threshold is breached, the system intercepts your position instantly. Your user interface will lock, the word LIQUIDATED will stamp across your screen, and your margin is permanently burned and removed from your balance.
+                If the real time price action moves against your prediction far enough that your open profit and loss percentage hits negative one hundred percent, you are dead. It does not matter if the price only touched that dangerous level for a single millisecond before bouncing back to profitability. The system is designed to intercept your position the exact moment your margin is depleted. 
+              </p>
+              <p className="text-red-400/80 leading-relaxed text-lg">
+                When this happens, the interface will visually lock your position card. The word LIQUIDATED will be stamped across your screen in bright red. Your invested margin is permanently seized and removed from your wallet balance. Handling the emotional shock of back to back liquidations is the ultimate test of a trader. If you tilt, if you get angry and try to revenge trade with maximum leverage, the system will gladly consume the rest of your balance. Maintain a cold, calculating mindset, or do not play at all.
               </p>
             </div>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold mb-6 text-white/90 border-b border-white/10 pb-4">
-              6. Navigating the Interface
+            <h2 className="text-3xl font-black mb-6 text-white/90 border-b border-white/10 pb-4 tracking-tight">
+              6. Cockpit Mastery: Navigating the Interface
             </h2>
-            <div className="space-y-4 text-white/60 leading-relaxed text-lg">
+            <div className="space-y-6 text-white/60 leading-relaxed text-lg text-justify">
               <p>
-                The 3xtremes dashboard is designed to give you maximum situational awareness without clutter.
+                To survive high speed combat, you must be completely fluent in your controls. The 3xtremes dashboard is your pilot cockpit.
               </p>
-              <ul className="list-disc list-inside space-y-3 mt-4">
-                <li><strong className="text-white/80">The Real Time Chart:</strong> Dominated by a massive, high frequency candlestick chart that tracks every single tick of volatility.</li>
-                <li><strong className="text-white/80">The Execution Panel:</strong> Located on the right, this is your weapon. Adjust your leverage slider, input your margin, and execute your strikes.</li>
-                <li><strong className="text-white/80">Active Positions:</strong> Located right below the chart. This tracks your live trades, showing your real time percentage return. This is also where you will see the dreaded red tag if you fail to survive.</li>
-                <li><strong className="text-white/80">The Summary Vault:</strong> A comprehensive breakdown of your all time performance. It tracks your win rate, your total profits, and your total losses, giving you a brutally honest assessment of your trading skills.</li>
+              <ul className="space-y-6 mt-6">
+                <li className="bg-white/[0.02] p-6 rounded-xl border border-white/5">
+                  <strong className="text-white/90 block mb-2 text-xl">The High Frequency Chart</strong> 
+                  This is the heartbeat of the platform. The chart renders at blinding speeds, printing candlesticks every single second. You must learn to read the difference between a candle body and a wick. A sudden, long wick represents immense volatility and is often the culprit behind unexpected liquidations. Stare at the chart until the rhythm of the market becomes second nature.
+                </li>
+                <li className="bg-white/[0.02] p-6 rounded-xl border border-white/5">
+                  <strong className="text-white/90 block mb-2 text-xl">The Execution Panel</strong> 
+                  Located on the right side of your screen. This is where you prepare your strikes. You can manually type your margin, or use the quick percentage buttons to deploy a fraction of your wallet balance. Above the input, the leverage slider dictates your risk multiplier. A single click on the green Up button or the red Down button submits your order instantly. Hesitation here is fatal.
+                </li>
+                <li className="bg-white/[0.02] p-6 rounded-xl border border-white/5">
+                  <strong className="text-white/90 block mb-2 text-xl">The Live Position Tracker</strong> 
+                  Directly beneath the chart, your active positions are displayed in real time. Watching the percentage counter wildly swing between deep red and bright green requires absolute mental discipline. This panel is your reality check.
+                </li>
+                <li className="bg-white/[0.02] p-6 rounded-xl border border-white/5">
+                  <strong className="text-white/90 block mb-2 text-xl">The Summary Vault</strong> 
+                  Found at the bottom right. This is the unvarnished truth of your trading career on 3xtremes. It tracks your overall win rate, your total gross profits, and your total gross losses. Anyone can get lucky once and hit a massive payout. The Summary Vault exposes whether you actually possess a profitable strategy, or if you are simply gambling.
+                </li>
               </ul>
             </div>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold mb-6 text-white/90 border-b border-white/10 pb-4">
-              7. Ultimate Risk Warning
+            <h2 className="text-3xl font-black mb-6 text-white/90 border-b border-white/10 pb-4 tracking-tight">
+              7. The Degen Manifesto: Ultimate Risk Warning
             </h2>
-            <p className="text-white/60 leading-relaxed text-lg">
-              Do not mistake this for a game. Trading with extreme leverage is the equivalent of financial combat. The speed of the rounds combined with the multipliers means you can drain your entire wallet in minutes if you lose your emotional control. Only deploy capital that you are fully prepared to see vanish. Enter the arena at your own absolute risk.
-            </p>
+            <div className="space-y-6 text-white/60 leading-relaxed text-lg text-justify">
+              <p>
+                Do not mistake 3xtremes for a video game. The numbers on your screen represent actual capital. Trading with leverage multipliers of this magnitude is the financial equivalent of skydiving without a reserve parachute. 
+              </p>
+              <p>
+                The extreme speed of the sixty second rounds combined with the colossal leverage means you have the mathematical capability to drain your entire life savings in a matter of minutes if you lose control of your emotions. We absolutely implore you to only deploy capital that you are fully prepared to see vanish into the void. 
+              </p>
+              <p>
+                We hold zero liability for your reckless decisions, your lack of risk management, or your emotional breakdowns. By entering this arena, you accept total responsibility for your fate. Trade with cold calculation. Execute with precision. May the most ruthless participants conquer the vault.
+              </p>
+            </div>
           </section>
         </div>
 
-        <footer className="mt-24 pt-8 border-t border-white/10 text-center">
-          <p className="text-white/30 font-mono text-sm">
-            © {new Date().getFullYear()} 3XTREMES. ALL RIGHTS RESERVED.
+        <footer className="mt-32 pt-12 border-t border-white/10 text-center pb-16">
+          <p className="text-white/30 font-mono text-sm tracking-widest">
+            © {new Date().getFullYear()} 3XTREMES. THE ARENA AWAITS.
           </p>
         </footer>
       </div>
