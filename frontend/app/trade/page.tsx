@@ -380,7 +380,10 @@ export default function TradePage() {
   const [closingPositionIds, setClosingPositionIds] = useState<Set<string>>(new Set());
 
   const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
-  const openPositions = allPositions.filter((p: any) => p.isOpen)
+  // Filter out positions that are marked as wiped out (liquidated) or are currently closing
+  const openPositions = allPositions.filter((p: any) => 
+    p.isOpen && !wipedOutIds.has(p.positionId.toString()) && !closingPositionIds.has(p.positionId.toString())
+  )
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
   console.log("📊 TradePage Data:", { ids, openPositions: openPositions.length });
@@ -477,6 +480,8 @@ export default function TradePage() {
             // Bot push: optimistic liquidation lock
             updateWipedOutIds(msg.positionId.toString());
             liquidationFiredRef.current.add(msg.positionId.toString());
+            // Clear from optimistic array if it was there
+            setOptimisticPositions(prev => prev.filter(p => !p._optimistic));
 
           } else if (msg.type === "CLOSE_CONFIRMED") {
             setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
@@ -499,8 +504,10 @@ export default function TradePage() {
 
           } else if (msg.type === "ROUND_SETTLING") {
             setRoundStatus("Settling Round...");
+            setOptimisticPositions([]); // Clear optimistic positions
           } else if (msg.type === "ROUND_SETTLED") {
             setRoundStatus("Starting Next Round...");
+            setOptimisticPositions([]); // Clear optimistic positions
           } else if (msg.type === "ROUND_START") {
             setCountdown(60);
             setRoundStatus("Active");
