@@ -44,7 +44,7 @@ export function Navbar() {
           {['Home', 'How it Works', 'Features', 'Docs'].map((item) => (
             <Link
               key={item}
-              href={item === 'Home' ? '/' : `#${item.toLowerCase().replace(/ /g, '-')}`}
+              href={item === 'Home' ? '/' : item === 'Docs' ? '/docs' : `#${item.toLowerCase().replace(/ /g, '-')}`}
               className="text-[12px] md:text-[13px] font-normal text-white/60 hover:text-white transition-colors tracking-tight antialiased"
             >
               {item}
