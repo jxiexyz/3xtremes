@@ -36,7 +36,6 @@ const ROUND_ENGINE_ABI = parseAbi([
 const POSITION_MANAGER_ABI = parseAbi([
   "function liquidatePosition(uint256 positionId) external",
   "function checkLiquidation(uint256 positionId) external view returns (bool)",
-  "function getPosition(uint256 positionId) external view returns (tuple(uint256 positionId, address trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice, bool isOpen, bool isLiquidated, uint256 openTimestamp, uint256 closeTimestamp, int256 realizedPnL))",
   "event PositionOpened(uint256 indexed positionId, address indexed trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice)",
   "event PositionClosed(uint256 indexed positionId, address indexed trader, uint256 exitPrice, int256 pnl, uint256 closeTimestamp)",
   "event PositionLiquidated(uint256 indexed positionId, address indexed trader, address indexed liquidator, uint256 liquidationPrice, uint256 marginLost)",

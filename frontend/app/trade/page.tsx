@@ -506,7 +506,7 @@ export default function TradePage() {
     connect();
 
     return () => {
-      if (ws) ws.close();
+      if (wsRef.current) wsRef.current.close();
       clearTimeout(reconnectTimeout);
     };
   }, []);
