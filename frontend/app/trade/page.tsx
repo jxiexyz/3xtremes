@@ -926,13 +926,29 @@ export default function TradePage() {
                   if (isOrderDisabled || countdown <= 7) return;
                   if (isTxPending) return;
                   
+                  const parsedAmount = parseFloat(amount);
+                  if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+                    alert('Please enter a valid margin amount.');
+                    return;
+                  }
+                  const parsedLev = Number(leverage);
+                  if (isNaN(parsedLev) || parsedLev < 10 || parsedLev > 10000) {
+                    alert('Leverage must be between 10x and 10,000x.');
+                    return;
+                  }
+                  const marginRaw = Math.floor(parsedAmount * 1e6);
+                  if (marginRaw <= 0) {
+                    alert('Margin is too small.');
+                    return;
+                  }
+
                   setIsTxPending(true)
-                  console.log("🚀 Attempting to open position...", { side, amount, leverage });
+                  console.log('Attempting to open position...', { side, amount, leverage });
                   
                   try {
                     const isLong = side === 'buy';
-                    const margin = BigInt(Math.floor(parseFloat(amount) * 1e6));
-                    const lev = BigInt(leverage);
+                    const margin = BigInt(marginRaw);
+                    const lev = BigInt(parsedLev);
                     
                     writeContract({
                       address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
