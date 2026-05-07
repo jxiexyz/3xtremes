@@ -557,6 +557,8 @@ export default function TradePage() {
   }, []);
 
   const [side, setSide]           = useState<'buy' | 'sell'>('buy')
+  const [hoveredSide, setHoveredSide] = useState<string | null>(null)
+  const [pressedSide, setPressedSide] = useState<string | null>(null)
   const [amount, setAmount]       = useState('100')
   const [leverage, setLeverage]   = useState(1000)
   const [showDeposit, setShowDeposit]   = useState(false)
@@ -794,21 +796,44 @@ export default function TradePage() {
               </div>
             )}
             <div className={styles.orderTitle}>Open Position</div>
-            <div className={styles.buySellWrap}>
+            <div style={{ display: 'flex', marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               {(['Long', 'Short'] as const).map((t, i) => {
-                const isSide = side === (i === 0 ? 'buy' : 'sell');
+                const val = i === 0 ? 'buy' : 'sell';
+                const isSelected = side === val;
                 const isLong = i === 0;
+                const isHov = hoveredSide === val;
+                const isPrs = pressedSide === val;
+                const green = '#10b981';
+                const red   = '#ef4444';
+                const col   = isLong ? green : red;
                 return (
                   <button
                     key={t}
-                    className={`${styles.buySellBtn} ${isSide ? (isLong ? styles.buySellBtnBlue : styles.buySellBtnRed) : ''}`}
-                    style={isSide ? {
-                      transform: 'none',
-                      boxShadow: isLong
-                        ? '0 -1px 12px rgba(16,185,129,0.2) inset'
-                        : '0 -1px 12px rgba(239,68,68,0.2) inset'
-                    } : {}}
-                    onClick={() => setSide(i === 0 ? 'buy' : 'sell')}
+                    onMouseEnter={() => setHoveredSide(val)}
+                    onMouseLeave={() => { setHoveredSide(null); setPressedSide(null); }}
+                    onMouseDown={() => setPressedSide(val)}
+                    onMouseUp={() => setPressedSide(null)}
+                    onClick={() => setSide(val)}
+                    style={{
+                      flex: 1,
+                      padding: '12px 0',
+                      background: isSelected
+                        ? `rgba(${isLong ? '16,185,129' : '239,68,68'},${isHov ? '0.12' : '0.07'})`
+                        : isHov ? 'rgba(255,255,255,0.05)' : 'transparent',
+                      border: 'none',
+                      borderBottom: `2px solid ${isSelected ? col : 'transparent'}`,
+                      borderRadius: '6px 6px 0 0',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      fontSize: 13,
+                      fontFamily: 'Inter Tight, sans-serif',
+                      letterSpacing: '0.03em',
+                      color: isSelected ? col : isHov ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.35)',
+                      textShadow: isSelected ? `0 0 14px ${col}80` : 'none',
+                      boxShadow: isSelected ? `inset 0 -2px 14px ${col}22` : 'none',
+                      transform: isPrs ? 'scale(0.94)' : 'scale(1)',
+                      transition: 'background 0.15s, color 0.15s, transform 0.08s, box-shadow 0.15s',
+                    }}
                   >{t}</button>
                 );
               })}
