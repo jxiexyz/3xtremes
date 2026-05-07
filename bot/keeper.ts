@@ -536,14 +536,22 @@ async function backendOpen(
         args: [trader, isLong, margin, leverage, BigInt(Math.floor(price))],
       });
       log(`📤 backendOpen tx: ${hash}`);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status === "success") {
-        log(`✅ Position OPENED for ${trader} (block ${receipt.blockNumber})`);
-        broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash });
-      } else {
-        log(`❌ backendOpen REVERTED for ${trader}`);
-        broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
-      }
+
+      // ✅ Konfirmasi LANGSUNG ke frontend setelah hash — tidak tunggu mining
+      broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash });
+
+      // Receipt verification jalan di background (catch revert jika ada)
+      publicClient.waitForTransactionReceipt({ hash }).then((receipt) => {
+        if (receipt.status === "success") {
+          log(`✅ Position OPENED on-chain for ${trader} (block ${receipt.blockNumber})`);
+        } else {
+          log(`❌ backendOpen REVERTED for ${trader} — notifying rollback`);
+          broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
+        }
+      }).catch((err: any) => {
+        log(`⚠️ Receipt check error: ${err?.shortMessage || err?.message}`);
+      });
+
       return;
     } catch (err: any) {
       attempts++;
@@ -578,14 +586,22 @@ async function backendClose(positionId: bigint, price: number) {
         args: [positionId, BigInt(Math.floor(price))],
       });
       log(`📤 backendClose tx: ${hash} | positionId=${positionId}`);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status === "success") {
-        log(`✅ Position #${positionId} CLOSED (block ${receipt.blockNumber})`);
-        broadcast({ type: "CLOSE_CONFIRMED", positionId: positionId.toString(), price, tx: hash });
-      } else {
-        log(`❌ backendClose REVERTED for #${positionId}`);
-        broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "tx_reverted" });
-      }
+
+      // ✅ Konfirmasi LANGSUNG ke frontend setelah hash — tidak tunggu mining
+      broadcast({ type: "CLOSE_CONFIRMED", positionId: positionId.toString(), price, tx: hash });
+
+      // Receipt verification jalan di background
+      publicClient.waitForTransactionReceipt({ hash }).then((receipt) => {
+        if (receipt.status === "success") {
+          log(`✅ Position #${positionId} CLOSED on-chain (block ${receipt.blockNumber})`);
+        } else {
+          log(`❌ backendClose REVERTED for #${positionId} — notifying rollback`);
+          broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "tx_reverted" });
+        }
+      }).catch((err: any) => {
+        log(`⚠️ Receipt check error: ${err?.shortMessage || err?.message}`);
+      });
+
       return;
     } catch (err: any) {
       attempts++;
