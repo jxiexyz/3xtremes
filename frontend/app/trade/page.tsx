@@ -383,7 +383,6 @@ export default function TradePage() {
 
   console.log("📊 TradePage Data:", { ids, openPositions: openPositions.length });
 
-  // Persistence for liquidated positions to prevent "rebirth" after settlement
   const [wipedOutIds, setWipedOutIds] = useState<Set<string>>(new Set());
   
   useEffect(() => {
@@ -403,6 +402,27 @@ export default function TradePage() {
       return next;
     });
   };
+
+  // --- OPTIMISTIC BALANCE LOGIC ---
+  const [optimisticBalanceOffset, setOptimisticBalanceOffset] = useState(0);
+
+  useEffect(() => {
+    let offset = 0;
+    closedPositions.forEach((p: any) => {
+      const posId = p.positionId.toString();
+      // If position was liquidated locally, but blockchain hasn't confirmed it yet (zombie state)
+      // The blockchain will return the margin + pnl to the user. We must hide it.
+      if (wipedOutIds.has(posId) && !p.isLiquidated) {
+        const margin = Number(p.margin) / 1e6;
+        const pnl = Number(p.realizedPnL) / 1e6;
+        const blockchainRefund = margin + pnl;
+        offset += blockchainRefund;
+      }
+    });
+    setOptimisticBalanceOffset(offset);
+  }, [closedPositions, wipedOutIds]);
+
+  const displayBalance = Math.max(0, balance - optimisticBalanceOffset);
 
   const [candles, setCandles] = useState<Candle[]>([])
   const [isCandle, setIsCandle] = useState(true)
@@ -541,7 +561,7 @@ export default function TradePage() {
   const totalRequired = marginNum + openFee
   
   const isInvalidMargin = isNaN(marginNum) || marginNum <= 0
-  const isExceedsBalance = !!address && totalRequired > balance
+  const isExceedsBalance = !!address && totalRequired > displayBalance
   const isOrderDisabled = isInvalidMargin || isExceedsBalance
 
   // Wipeout Detection + Auto-Liquidation
@@ -631,7 +651,7 @@ export default function TradePage() {
             {address && (
               <div className={styles.tbBal}>
                 <span className={styles.tbBalLabel}>USCC</span>
-                <span>{balance.toFixed(2)}</span>
+                <span>{displayBalance.toFixed(2)}</span>
               </div>
             )}
 
@@ -782,7 +802,7 @@ export default function TradePage() {
                     key={p} 
                     className={styles.pctBtn} 
                     onClick={() => {
-                      const maxMargin = balance / (1 + (leverage * 0.005));
+                      const maxMargin = displayBalance / (1 + (leverage * 0.005));
                       setAmount(
                         p === '25%' ? (maxMargin * 0.25).toFixed(2) :
                         p === '50%' ? (maxMargin * 0.50).toFixed(2) :
@@ -973,7 +993,7 @@ export default function TradePage() {
                       <tr>
                         <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Balance</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
-                          <span style={{ color: '#fff' }}>{balance.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
+                          <span style={{ color: '#fff' }}>{displayBalance.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
                         </td>
                       </tr>
                       <tr>

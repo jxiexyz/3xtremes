@@ -428,15 +428,7 @@ async function settle(roundId: number, finalPrice: number) {
   isSettling = true;
   stopLoop();
 
-  log(`🏁 Round #${roundId} ending. Waiting for any pending liquidations to clear...`);
-  
-  // 🛡️ THE ULTIMATE LOCK: Never settle the round if there are still positions being liquidated
-  while (liquidating.size > 0) {
-    log(`⏳ Holding settlement... Waiting for ${liquidating.size} pending liquidation(s) to finish!`);
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-
-  log(`🏁 All clear! Settling round #${roundId} at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
+  log(`🏁 Settling round #${roundId} at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
 
   broadcast({ type: "ROUND_SETTLING", roundId, finalPrice });
 
