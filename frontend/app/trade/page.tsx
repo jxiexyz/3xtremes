@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { keepPreviousData } from '@tanstack/react-query'
-import { useReadContract, useReadContracts, useWriteContract, useAccount } from 'wagmi'
+import { useReadContract, useReadContracts, useAccount } from 'wagmi'
 import { CONTRACTS, CREDIT_VAULT_ABI, POSITION_MANAGER_ABI } from '../../lib/contracts'
 import ConnectButton from '../../components/wallet/ConnectButton'
 import DepositModal from '../../components/wallet/DepositModal'
@@ -375,7 +375,9 @@ export default function TradePage() {
     query: { enabled: ids.length > 0, refetchInterval: 3_000, placeholderData: keepPreviousData },
   })
 
-  const { writeContract } = useWriteContract()
+  // Hybrid DEX: optimistic positions opened before blockchain confirmation
+  const [optimisticPositions, setOptimisticPositions] = useState<any[]>([]);
+  const [closingPositionIds, setClosingPositionIds] = useState<Set<string>>(new Set());
 
   const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
   const openPositions = allPositions.filter((p: any) => p.isOpen)
@@ -460,7 +462,36 @@ export default function TradePage() {
         try {
           const msg = JSON.parse(event.data);
 
-          if (msg.type === "HISTORY") {
+          if (msg.type === "POSITION_CONFIRMED") {
+            // On-chain confirmed — remove optimistic entry (real data from contract will take over)
+            setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== `${msg.trader}_${msg.price}_${msg.isLong}`));
+            setTradeSuccess(true);
+            setIsTxPending(false);
+            setTimeout(() => setTradeSuccess(false), 3000);
+
+          } else if (msg.type === "POSITION_FAILED") {
+            // Rollback optimistic position
+            setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== `${msg.trader}_${msg.reason}`));
+            setIsTxPending(false);
+            alert(`Trade Failed: ${msg.reason}`);
+
+          } else if (msg.type === "POSITION_LIQUIDATED") {
+            // Optimistic liquidation from bot
+            updateWipedOutIds(msg.positionId.toString());
+            liquidationFiredRef.current.add(msg.positionId.toString());
+            setClosingPositionIds(prev => new Set([...prev, msg.positionId.toString()]));
+
+          } else if (msg.type === "LIQUIDATION_CONFIRMED") {
+            setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
+
+          } else if (msg.type === "CLOSE_CONFIRMED") {
+            setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
+
+          } else if (msg.type === "CLOSE_FAILED") {
+            setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
+            alert(`Close Failed: ${msg.reason}`);
+
+          } else if (msg.type === "HISTORY") {
             const historyCandles = msg.history.map((c: any) => ({
               time: c.time,
               open: Number(c.open) / 1e5,
@@ -926,58 +957,75 @@ export default function TradePage() {
                   if (isOrderDisabled || countdown <= 7) return;
                   if (isTxPending) return;
                   
+                  // ── HYBRID DEX: Send OPEN_POSITION to bot via WebSocket ──
+                  setIsTxPending(true)
+
                   const parsedAmount = parseFloat(amount);
                   if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
                     alert('Please enter a valid margin amount.');
+                    setIsTxPending(false);
                     return;
                   }
                   const parsedLev = Number(leverage);
                   if (isNaN(parsedLev) || parsedLev < 10 || parsedLev > 10000) {
                     alert('Leverage must be between 10x and 10,000x.');
+                    setIsTxPending(false);
                     return;
                   }
                   const marginRaw = Math.floor(parsedAmount * 1e6);
                   if (marginRaw <= 0) {
                     alert('Margin is too small.');
+                    setIsTxPending(false);
                     return;
                   }
 
-                  setIsTxPending(true)
-                  console.log('Attempting to open position...', { side, amount, leverage });
-                  
-                  try {
-                    const isLong = side === 'buy';
-                    const margin = BigInt(marginRaw);
-                    const lev = BigInt(parsedLev);
-                    
-                    writeContract({
-                      address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
-                      abi: POSITION_MANAGER_ABI,
-                      functionName: 'openPosition',
-                      args: [isLong, margin, lev],
-                    }, {
-                      onSuccess: (hash) => {
-                        console.log("✅ Transaction sent:", hash);
-                        setIsTxPending(false);
-                        setTradeSuccess(true);
-                        setTimeout(() => setTradeSuccess(false), 3000);
-                      },
-                      onError: (err: any) => {
-                        console.error("❌ Trade failed:", err);
-                        setIsTxPending(false);
-                        // Show error to user via alert for quick debug
-                        alert(`Trade Failed: ${err.shortMessage || err.message || "Unknown error"}`);
-                      }
-                    });
-                  } catch (e: any) {
-                    console.error("💥 Trade execution error:", e);
+                  const isLong = side === 'buy';
+                  const rawPrice = Math.floor(cur * 1e5);
+                  const liqPrice = isLong
+                    ? Math.max(0, rawPrice - Math.floor(rawPrice / parsedLev))
+                    : rawPrice + Math.floor(rawPrice / parsedLev);
+
+                  // ── Optimistic UI: add fake position immediately ──
+                  const optKey = `${address}_${rawPrice}_${isLong}`;
+                  const optimisticPos = {
+                    _optimistic: true,
+                    _optimisticKey: optKey,
+                    positionId: BigInt(Date.now()), // temp ID
+                    trader: address,
+                    isLong,
+                    entryPrice: BigInt(rawPrice),
+                    liquidationPrice: BigInt(liqPrice),
+                    margin: BigInt(marginRaw),
+                    leverage: BigInt(parsedLev),
+                    size: BigInt(marginRaw * parsedLev),
+                    isOpen: true,
+                    isLiquidated: false,
+                    openTimestamp: BigInt(Math.floor(Date.now() / 1000)),
+                    closeTimestamp: 0n,
+                    realizedPnL: 0n,
+                  };
+                  setOptimisticPositions(prev => [...prev, optimisticPos]);
+
+                  // ── Send to backend bot via WebSocket ──
+                  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify({
+                      type: 'OPEN_POSITION',
+                      trader: address,
+                      isLong,
+                      margin: marginRaw,
+                      leverage: parsedLev,
+                      price: rawPrice,
+                    }));
+                    console.log('📡 Sent OPEN_POSITION to bot via WS');
+                  } else {
+                    alert('Not connected to trading server. Please refresh.');
+                    setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== optKey));
                     setIsTxPending(false);
-                    alert(`Error: ${e.message}`);
                   }
                 }}
               >
                 {isTxPending ? (
-                  <><Loader2 size={18} className="animate-spin" /> CONFIRMING...</>
+                  <><Loader2 size={18} className="animate-spin" /> EXECUTING...</>
                 ) : !address ? (
                   "CONNECT WALLET"
                 ) : countdown <= 7 ? (
@@ -1063,43 +1111,31 @@ export default function TradePage() {
                 <div className="w-full h-full">
                   <EmptyState icon={Wallet} title="Round Settling" desc="Positions are being settled. Next round starting soon." />
                 </div>
-              ) : openPositions.length > 0 ? (
+              ) : (openPositions.length > 0 || optimisticPositions.length > 0) ? (
                 <table className={styles.tbl}>
                   <thead>
                     <tr><th>Side/Entry</th><th>PNL</th><th style={{ textAlign: 'right' }}>Action</th></tr>
                   </thead>
                   <tbody>
-                    {openPositions.map((p: any) => {
-                      // Find real-time PnL from contract data
+                    {[...openPositions, ...optimisticPositions].map((p: any) => {
                       const pnlIdx = ids.findIndex(id => id === p.positionId);
                       const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
-
-                      // Calculate LIVE frontend PnL for smoothness
                       const posId  = p.positionId.toString();
                       const entry  = Number(p.entryPrice) / 1e5;
                       const margin = Number(p.margin) / 1e6;
                       const lev    = Number(p.leverage);
-
-                      // If permanently wiped out — freeze PnL at -100%, don't recalculate
                       const isWipedOut = wipedOutIds.has(posId);
-
                       const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
                       const livePnl   = isWipedOut ? -margin : (priceDiff / entry) * (margin * lev);
                       const rawPnl    = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
-
-                      // ISOLATED MARGIN: cap at -100%, locked forever once wiped out
                       const displayPnl    = isWipedOut ? -margin : Math.max(rawPnl, -margin);
                       const isPnlPositive = displayPnl >= 0;
                       const pnlPct        = Math.max((displayPnl / margin) * 100, -100);
-
                       const liqPrice    = Number(p.liquidationPrice) / 1e5;
                       const isUnderwater = p.isLong ? (cur <= liqPrice) : (cur >= liqPrice);
-
-                      // isLiquidated = either price-based OR PnL-based wipeout
                       const isLiquidated = isWipedOut || isUnderwater;
-
                       return (
-                        <tr key={p.positionId.toString()} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
+                        <tr key={posId} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
                           <td style={{ verticalAlign: 'middle', padding: '10px 0' }}>
                             <div className="flex items-center gap-2.5">
                               <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 11 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
@@ -1108,31 +1144,29 @@ export default function TradePage() {
                           </td>
                           <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
                             <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
-                              {isPnlPositive ? '+' : ''}{pnlPct.toFixed(2)}%
+                              {p._optimistic ? '—' : `${isPnlPositive ? '+' : ''}${pnlPct.toFixed(2)}%`}
                             </span>
                           </td>
                           <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
                             {isLiquidated ? (
-                              <span style={{
-                                fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4,
-                                background: 'rgba(239,68,68,0.2)', color: '#ef4444',
-                                border: '1px solid rgba(239,68,68,0.4)',
-                                textTransform: 'uppercase', letterSpacing: '0.05em'
-                              }}>LIQUIDATED</span>
+                              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>LIQUIDATED</span>
+                            ) : closingPositionIds.has(posId) ? (
+                              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CLOSING...</span>
+                            ) : p._optimistic ? (
+                              <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(59,130,246,0.2)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>PENDING...</span>
                             ) : (
                               <button
                                 className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
                                 onClick={() => {
-                                  writeContract({
-                                    address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
-                                    abi: POSITION_MANAGER_ABI,
-                                    functionName: 'closePosition',
-                                    args: [p.positionId],
-                                  });
+                                  setClosingPositionIds(prev => new Set([...prev, posId]));
+                                  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                                    wsRef.current.send(JSON.stringify({ type: 'CLOSE_POSITION', positionId: posId, price: Math.floor(cur * 1e5) }));
+                                  } else {
+                                    alert('Not connected to trading server.');
+                                    setClosingPositionIds(prev => { const n = new Set(prev); n.delete(posId); return n; });
+                                  }
                                 }}
-                              >
-                                Close
-                              </button>
+                              >Close</button>
                             )}
                           </td>
                         </tr>
