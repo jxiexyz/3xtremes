@@ -423,8 +423,15 @@ export default function TradePage() {
         offset += blockchainRefund;
       }
     });
+    // Deduct margin for positions that are still optimistic (not yet confirmed on-chain)
+    optimisticPositions.forEach((p: any) => {
+      const margin = Number(p.margin) / 1e6;
+      const openFee = margin * Number(p.leverage) * 0.0001; // 0.01% of size
+      offset += (margin + openFee);
+    });
+
     setOptimisticBalanceOffset(offset);
-  }, [closedPositions, wipedOutIds]);
+  }, [closedPositions, wipedOutIds, optimisticPositions]);
 
   const displayBalance = Math.max(0, balance - optimisticBalanceOffset);
 
