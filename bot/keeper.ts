@@ -1,4 +1,4 @@
-import { createPublicClient, createWalletClient, http, parseAbi, parseAbiItem } from "viem";
+import { createPublicClient, createWalletClient, http, parseAbi, parseAbiItem, getAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { defineChain } from "viem";
 import { WebSocketServer, WebSocket } from "ws";
@@ -97,8 +97,12 @@ wss.on("connection", (ws) => {
 
       // ── OPEN POSITION (Optimistic: Frontend already updated UI) ────────────
       if (msg.type === "OPEN_POSITION") {
-        const { trader, isLong, margin, leverage, price } = msg;
-        log(`📥 OPEN request: ${trader} | ${isLong ? "LONG" : "SHORT"} | margin=${margin} | lev=${leverage}x | price=${formatPrice(BigInt(price))}`);
+        const { isLong, margin, leverage, price } = msg;
+        // Normalize address to EIP-55 checksum format (required by viem)
+        let trader: `0x${string}`;
+        try { trader = getAddress(msg.trader); }
+        catch { broadcast({ type: "POSITION_FAILED", trader: msg.trader, reason: "invalid_address" }); return; }
+        log(`📥 OPEN request: ${trader} | ${isLong ? "LONG" : "SHORT"} | margin=${margin} | lev=${leverage}x | price=${formatPrice(BigInt(Math.floor(price)))}`);
         await backendOpen(trader, isLong, BigInt(margin), BigInt(leverage), price);
       }
 
@@ -509,27 +513,42 @@ async function backendOpen(
   leverage: bigint,
   price: number
 ) {
-  try {
-    const hash = await walletClient.writeContract({
-      address: POSITION_MANAGER_ADDRESS,
-      abi: POSITION_MANAGER_ABI,
-      functionName: "backendOpenPosition",
-      args: [trader, isLong, margin, leverage, BigInt(Math.floor(price))],
-    });
-    log(`📤 backendOpen tx: ${hash}`);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status === "success") {
-      log(`✅ Position OPENED for ${trader} (block ${receipt.blockNumber})`);
-      // Notify frontend the on-chain tx is confirmed
-      broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash });
-    } else {
-      log(`❌ backendOpen REVERTED for ${trader}`);
-      broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
+  // Block during settle/start to avoid nonce conflicts
+  if (isSettling || isStarting) {
+    log(`⏳ backendOpen queued — round is settling/starting, retry in 3s`);
+    await new Promise((r) => setTimeout(r, 3000));
+    if (isSettling || isStarting) {
+      broadcast({ type: "POSITION_FAILED", trader, reason: "round_transitioning_retry" });
+      return;
     }
-  } catch (err: any) {
-    log(`❌ backendOpen error: ${err?.shortMessage || err?.message}`);
-    broadcast({ type: "POSITION_FAILED", trader, reason: err?.shortMessage || err?.message });
   }
+
+  let attempts = 0;
+  while (attempts < 3) {
+    try {
+      const hash = await walletClient.writeContract({
+        address: POSITION_MANAGER_ADDRESS,
+        abi: POSITION_MANAGER_ABI,
+        functionName: "backendOpenPosition",
+        args: [trader, isLong, margin, leverage, BigInt(Math.floor(price))],
+      });
+      log(`📤 backendOpen tx: ${hash}`);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status === "success") {
+        log(`✅ Position OPENED for ${trader} (block ${receipt.blockNumber})`);
+        broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash });
+      } else {
+        log(`❌ backendOpen REVERTED for ${trader}`);
+        broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
+      }
+      return;
+    } catch (err: any) {
+      attempts++;
+      log(`⚠️ backendOpen attempt ${attempts}/3 failed: ${err?.shortMessage || err?.message}`);
+      if (attempts < 3) await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  broadcast({ type: "POSITION_FAILED", trader, reason: "max_retries_exceeded" });
 }
 
 /**
@@ -537,26 +556,41 @@ async function backendOpen(
  * Called when Frontend sends a CLOSE_POSITION WS message.
  */
 async function backendClose(positionId: bigint, price: number) {
-  try {
-    const hash = await walletClient.writeContract({
-      address: POSITION_MANAGER_ADDRESS,
-      abi: POSITION_MANAGER_ABI,
-      functionName: "backendClosePosition",
-      args: [positionId, BigInt(Math.floor(price))],
-    });
-    log(`📤 backendClose tx: ${hash} | positionId=${positionId}`);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
-    if (receipt.status === "success") {
-      log(`✅ Position #${positionId} CLOSED (block ${receipt.blockNumber})`);
-      broadcast({ type: "CLOSE_CONFIRMED", positionId: positionId.toString(), price, tx: hash });
-    } else {
-      log(`❌ backendClose REVERTED for #${positionId}`);
-      broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "tx_reverted" });
+  if (isSettling || isStarting) {
+    log(`⏳ backendClose queued — round is settling/starting, retry in 3s`);
+    await new Promise((r) => setTimeout(r, 3000));
+    if (isSettling || isStarting) {
+      broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "round_transitioning_retry" });
+      return;
     }
-  } catch (err: any) {
-    log(`❌ backendClose error: ${err?.shortMessage || err?.message}`);
-    broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: err?.shortMessage || err?.message });
   }
+
+  let attempts = 0;
+  while (attempts < 3) {
+    try {
+      const hash = await walletClient.writeContract({
+        address: POSITION_MANAGER_ADDRESS,
+        abi: POSITION_MANAGER_ABI,
+        functionName: "backendClosePosition",
+        args: [positionId, BigInt(Math.floor(price))],
+      });
+      log(`📤 backendClose tx: ${hash} | positionId=${positionId}`);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status === "success") {
+        log(`✅ Position #${positionId} CLOSED (block ${receipt.blockNumber})`);
+        broadcast({ type: "CLOSE_CONFIRMED", positionId: positionId.toString(), price, tx: hash });
+      } else {
+        log(`❌ backendClose REVERTED for #${positionId}`);
+        broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "tx_reverted" });
+      }
+      return;
+    } catch (err: any) {
+      attempts++;
+      log(`⚠️ backendClose attempt ${attempts}/3 failed: ${err?.shortMessage || err?.message}`);
+      if (attempts < 3) await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "max_retries_exceeded" });
 }
 
 // ─── Liquidation Logic ────────────────────────────────────────────────────────
