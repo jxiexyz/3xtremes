@@ -1207,7 +1207,7 @@ export default function TradePage() {
                         // Force display PnL to -margin if liquidated
                         const finalDisplayPnl = isLiquidated ? -margin : displayPnl;
                         const finalPnlPct = isLiquidated ? -100 : pnlPct;
-                        const isPnlPositive = finalDisplayPnl >= 0;
+                        const isFinalPnlPositive = finalDisplayPnl >= 0;
 
                         return (
                           <tr key={posId} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
@@ -1217,9 +1217,9 @@ export default function TradePage() {
                                 <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>{fmtPrice(p.entryPrice)}</span>
                               </div>
                             </td>
-                            <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
+                            <td style={{ color: isFinalPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
                               <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
-                                {isPnlPositive ? '+' : ''}{finalPnlPct.toFixed(2)}%
+                                {isFinalPnlPositive ? '+' : ''}{finalPnlPct.toFixed(2)}%
                               </span>
                             </td>
                             <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
