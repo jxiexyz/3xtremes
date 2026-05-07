@@ -380,10 +380,9 @@ export default function TradePage() {
   const [closingPositionIds, setClosingPositionIds] = useState<Set<string>>(new Set());
 
   const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
-  // Filter out positions that are marked as wiped out (liquidated) or are currently closing
-  const openPositions = allPositions.filter((p: any) => 
-    p.isOpen && !wipedOutIds.has(p.positionId.toString()) && !closingPositionIds.has(p.positionId.toString())
-  )
+  // Chart uses a filtered version, but we keep them in openPositions for the UI table
+  const openPositions = allPositions.filter((p: any) => p.isOpen && !closingPositionIds.has(p.positionId.toString()))
+  const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()))
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
   console.log("📊 TradePage Data:", { ids, openPositions: openPositions.length });
@@ -601,13 +600,14 @@ export default function TradePage() {
   // Once a position hits -100% (via wick OR PnL), it's permanently frozen
   // and liquidation TX fires ONCE (not every candle tick)
   useEffect(() => {
-    // Only check REAL on-chain positions, never optimistic ones
-    if (!address || openPositions.length === 0 || candles.length === 0) return;
+    // Check both real and optimistic positions for wipeout!
+    const allActive = [...openPositions, ...optimisticPositions];
+    if (allActive.length === 0 || candles.length === 0) return;
 
     const lastCandle = candles[candles.length - 1];
     if (!lastCandle) return;
 
-    openPositions.forEach((p: any) => {
+    allActive.forEach((p: any) => {
       const posId = p.positionId.toString();
 
       // Already fired liquidation for this position — skip entirely
@@ -633,14 +633,14 @@ export default function TradePage() {
         // Fire liquidation logic locally for UI lock
         liquidationFiredRef.current.add(posId);
 
-        // TRIGGER BACKEND: Tell the bot to liquidate immediately!
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        // TRIGGER BACKEND: Tell the bot to liquidate immediately (only if it's a real position)
+        if (!p._optimistic && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'REQUEST_LIQUIDATION', positionId: posId }));
           console.log(`📡 Reported liquidation request for #${posId} to backend`);
         }
       }
     });
-  }, [candles, openPositions, address]);
+  }, [candles, openPositions, optimisticPositions, address]);
 
 
 
@@ -771,7 +771,7 @@ export default function TradePage() {
                 </div>
               ) : (
                 <>
-                  <TradingChart data={candles} isCandle={isCandle} positions={[...openPositions, ...optimisticPositions]} showLines={roundStatus === "Active"} />
+                  <TradingChart data={candles} isCandle={isCandle} positions={[...chartPositions, ...optimisticPositions.filter(p => !wipedOutIds.has(p.positionId.toString()))]} showLines={roundStatus === "Active"} />
                   
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
@@ -1201,9 +1201,14 @@ export default function TradePage() {
                         const isPnlPositive = displayPnl >= 0;
                         const pnlPct        = Math.max((displayPnl / margin) * 100, -100);
                         const liqPrice    = Number(p.liquidationPrice) / 1e5;
-                        // Never liquidate optimistic positions on frontend
-                        const isUnderwater = !p._optimistic && (p.isLong ? (cur <= liqPrice) : (cur >= liqPrice));
-                        const isLiquidated = !p._optimistic && (isWipedOut || isUnderwater);
+                        const isUnderwater = (p.isLong ? (cur <= liqPrice) : (cur >= liqPrice));
+                        const isLiquidated = isWipedOut || isUnderwater;
+                        
+                        // Force display PnL to -margin if liquidated
+                        const finalDisplayPnl = isLiquidated ? -margin : displayPnl;
+                        const finalPnlPct = isLiquidated ? -100 : pnlPct;
+                        const isPnlPositive = finalDisplayPnl >= 0;
+
                         return (
                           <tr key={posId} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
                             <td style={{ verticalAlign: 'middle', padding: '10px 0' }}>
@@ -1214,7 +1219,7 @@ export default function TradePage() {
                             </td>
                             <td style={{ color: isPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
                               <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
-                                {isPnlPositive ? '+' : ''}{pnlPct.toFixed(2)}%
+                                {isPnlPositive ? '+' : ''}{finalPnlPct.toFixed(2)}%
                               </span>
                             </td>
                             <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
