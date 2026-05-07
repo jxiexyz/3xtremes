@@ -253,12 +253,42 @@
 .buySellBtn {
   flex: 1; padding: 12px 0;
   background: transparent; border: none;
-  cursor: pointer; font-weight: 600; font-size: 13px;
+  cursor: pointer; font-weight: 700; font-size: 13px;
   color: var(--muted); border-bottom: 2px solid transparent;
-  transition: all 0.2s; font-family: 'Inter Tight', sans-serif;
+  transition: color 0.15s, background 0.15s, transform 0.1s, box-shadow 0.15s;
+  font-family: 'Inter Tight', sans-serif;
+  letter-spacing: 0.02em;
+  position: relative;
+  border-radius: 6px 6px 0 0;
 }
-.buySellBtnBlue { color: #10b981 !important; border-bottom-color: #10b981 !important; text-shadow: 0 0 10px rgba(16,185,129,0.3); }
-.buySellBtnRed  { color: #ef4444 !important;  border-bottom-color: #ef4444 !important; text-shadow: 0 0 10px rgba(239,68,68,0.3); }
+.buySellBtn:hover {
+  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.04);
+}
+.buySellBtn:active {
+  transform: scale(0.96);
+  background: rgba(255,255,255,0.07);
+}
+.buySellBtnBlue {
+  color: #10b981 !important;
+  border-bottom-color: #10b981 !important;
+  text-shadow: 0 0 12px rgba(16,185,129,0.5);
+  background: rgba(16,185,129,0.06) !important;
+}
+.buySellBtnBlue:hover {
+  background: rgba(16,185,129,0.1) !important;
+  box-shadow: 0 0 16px rgba(16,185,129,0.15);
+}
+.buySellBtnRed {
+  color: #ef4444 !important;
+  border-bottom-color: #ef4444 !important;
+  text-shadow: 0 0 12px rgba(239,68,68,0.5);
+  background: rgba(239,68,68,0.06) !important;
+}
+.buySellBtnRed:hover {
+  background: rgba(239,68,68,0.1) !important;
+  box-shadow: 0 0 16px rgba(239,68,68,0.15);
+}
 
 .inputGroup { margin-bottom: 32px; }
 .inputLabel { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 10px; display: block; letter-spacing: 0.04em; text-transform: uppercase; }

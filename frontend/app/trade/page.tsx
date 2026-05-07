@@ -795,13 +795,23 @@ export default function TradePage() {
             )}
             <div className={styles.orderTitle}>Open Position</div>
             <div className={styles.buySellWrap}>
-              {['Long', 'Short'].map((t, i) => (
-                <button
-                  key={t}
-                  className={`${styles.buySellBtn} ${side === (i === 0 ? 'buy' : 'sell') ? (i === 0 ? styles.buySellBtnBlue : styles.buySellBtnRed) : ''}`}
-                  onClick={() => setSide(i === 0 ? 'buy' : 'sell')}
-                >{t}</button>
-              ))}
+              {(['Long', 'Short'] as const).map((t, i) => {
+                const isSide = side === (i === 0 ? 'buy' : 'sell');
+                const isLong = i === 0;
+                return (
+                  <button
+                    key={t}
+                    className={`${styles.buySellBtn} ${isSide ? (isLong ? styles.buySellBtnBlue : styles.buySellBtnRed) : ''}`}
+                    style={isSide ? {
+                      transform: 'none',
+                      boxShadow: isLong
+                        ? '0 -1px 12px rgba(16,185,129,0.2) inset'
+                        : '0 -1px 12px rgba(239,68,68,0.2) inset'
+                    } : {}}
+                    onClick={() => setSide(i === 0 ? 'buy' : 'sell')}
+                  >{t}</button>
+                );
+              })}
             </div>
 
             <div className={styles.inputGroup}>
