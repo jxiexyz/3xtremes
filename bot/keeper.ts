@@ -347,32 +347,58 @@ function computeCandles(seed: bigint, startPrice: number): Candle[] {
 
 // ─── Round Lifecycle ──────────────────────────────────────────────────────────
 
-async function startRound() {
-  if (isStarting) return;
-  isStarting = true;
-  log("🚀 Starting new round...");
+// --- ASYNC ON-CHAIN TRANSITION LOGIC ---
+let isBackgroundSettling = false;
 
+async function startRoundOnChain() {
+  log("🚀 Sending startRound to chain...");
   const ok = await sendTx("startRound", () =>
     walletClient.writeContract({
       address: ROUND_ENGINE_ADDRESS,
       abi: ROUND_ENGINE_ABI,
       functionName: "startRound",
+      gas: 500000n, // Bypass simulation
     })
   );
 
-  isStarting = false;
-
   if (!ok) {
-    // Safety check: maybe the tx succeeded but we lost the receipt connection?
     const isActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
     if (isActive) {
-      log("✅ startRound tx receipt lost, but round is actually ACTIVE on-chain. Proceeding...");
+      log("✅ startRound tx receipt lost, but active. Proceeding...");
     } else {
-      log("⚠️  startRound gagal (Not active), retry in 1s...");
-      setTimeout(startRound, 1000);
+      log("⚠️  startRound gagal, retry in 1s...");
+      setTimeout(startRoundOnChain, 1000);
       return;
     }
   }
+  
+  isBackgroundSettling = false; // Transition complete!
+}
+
+async function startRound() {
+  if (isStarting) return;
+  isStarting = true;
+  log("🚀 Starting new round...");
+  const ok = await sendTx("startRound", () =>
+    walletClient.writeContract({
+      address: ROUND_ENGINE_ADDRESS,
+      abi: ROUND_ENGINE_ABI,
+      functionName: "startRound",
+      gas: 500000n, // Bypass simulation
+    })
+  );
+
+  if (!ok) {
+    const isActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
+    if (isActive) {
+      log("✅ startRound tx receipt lost, but active. Proceeding...");
+    } else {
+      log("⚠️  startRound gagal, retry in 1s...");
+      setTimeout(startRoundOnChain, 1000);
+      return;
+    }
+  }
+
 
   // Read round info + seed from chain
   const roundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
@@ -454,20 +480,40 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     idx++;
   }, 1000);
 
-  // Settle EXACTLY after the last candle (0 buffer, contract will accept it immediately if timestamp matches)
+  // Optimistic instant frontend transition
   const settleDelay = candles.length * 1000;
-  settleTimeout = setTimeout(() => settle(roundId, finalPrice), settleDelay);
-  log(`⏰ Settle scheduled in ${settleDelay}ms | candles=${candles.length}`);
+  settleTimeout = setTimeout(() => handleOptimisticRoundEnd(roundId, finalPrice), settleDelay);
 }
 
-async function settle(roundId: number, finalPrice: number) {
-  if (isSettling) return;
-  isSettling = true;
+async function handleOptimisticRoundEnd(roundId: number, finalPrice: number) {
   stopLoop();
+  isBackgroundSettling = true; // Block incoming trades temporarily
 
-  log(`🏁 Settling round #${roundId} at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
-
+  // 1. Immediately tell frontend round settled
   broadcast({ type: "ROUND_SETTLING", roundId, finalPrice });
+  broadcast({ type: "ROUND_SETTLED", roundId, finalPrice });
+
+  // 2. Immediately start streaming next round in memory
+  const nextRoundId = roundId + 1;
+  const startPriceNum = finalPrice;
+  const seedHex = "0x" + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+  const seedBig = BigInt(seedHex);
+  const nextCandles = computeCandles(seedBig, startPriceNum);
+  const nextFinalPrice = nextCandles[nextCandles.length - 1].close;
+
+  log(`⚡ Optimistic Next Round #${nextRoundId} started in memory!`);
+  broadcast({ type: "ROUND_START", roundId: nextRoundId, startPrice: startPriceNum });
+  
+  streamCandles(nextRoundId, nextCandles, nextFinalPrice);
+
+  // 3. Perform on-chain settlement asynchronously with a 2-second buffer for timestamp
+  setTimeout(() => {
+    settleOnChain(roundId, finalPrice).catch(e => log("settleOnChain error: " + e));
+  }, 2000);
+}
+
+async function settleOnChain(roundId: number, finalPrice: number) {
+  log(`🏁 Settling round #${roundId} on-chain at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
 
   let attempts = 0;
   while (attempts < 10) {
@@ -477,14 +523,14 @@ async function settle(roundId: number, finalPrice: number) {
         abi: ROUND_ENGINE_ABI,
         functionName: "settleRound",
         args: [BigInt(Math.floor(finalPrice))],
+        gas: 500000n, // Bypass simulation
       })
     );
 
     if (ok) {
-      log(`✅ Round #${roundId} settled!`);
-      broadcast({ type: "ROUND_SETTLED", roundId, finalPrice });
-      isSettling = false;
-      setTimeout(startRound, 200); // 200ms instead of 1000ms
+      log(`✅ Round #${roundId} settled on-chain!`);
+      // Trigger startRound on-chain
+      setTimeout(startRoundOnChain, 200);
       return;
     }
 
@@ -523,13 +569,8 @@ async function backendOpen(
   price: number
 ) {
   // Block during settle/start to avoid nonce conflicts
-  if (isSettling || isStarting) {
-    log(`⏳ backendOpen queued — round is settling/starting, retry in 3s`);
-    await new Promise((r) => setTimeout(r, 3000));
-    if (isSettling || isStarting) {
-      broadcast({ type: "POSITION_FAILED", trader, reason: "round_transitioning_retry" });
-      return;
-    }
+  while (isBackgroundSettling) {
+    await new Promise(r => setTimeout(r, 200));
   }
 
   let attempts = 0;
@@ -573,13 +614,8 @@ async function backendOpen(
  * Called when Frontend sends a CLOSE_POSITION WS message.
  */
 async function backendClose(positionId: bigint, price: number) {
-  if (isSettling || isStarting) {
-    log(`⏳ backendClose queued — round is settling/starting, retry in 3s`);
-    await new Promise((r) => setTimeout(r, 3000));
-    if (isSettling || isStarting) {
-      broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "round_transitioning_retry" });
-      return;
-    }
+  while (isBackgroundSettling) {
+    await new Promise(r => setTimeout(r, 200));
   }
 
   let attempts = 0;
