@@ -743,7 +743,7 @@ async function init() {
       // Re-compute candles untuk dapet finalPrice
       const candles = computeCandles(seedBig, startPriceNum);
       const finalPrice = candles[candles.length - 1].close;
-      settleTimeout = setTimeout(() => settle(roundIdNum, finalPrice), (remaining + 2) * 1000);
+      settleTimeout = setTimeout(() => handleOptimisticRoundEnd(roundIdNum, finalPrice), remaining * 1000);
     } else {
       // Resume streaming dari second yang tersisa
       const elapsed = 60 - remaining;
