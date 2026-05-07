@@ -559,6 +559,7 @@ export default function TradePage() {
   const [side, setSide]           = useState<'buy' | 'sell'>('buy')
   const [hoveredSide, setHoveredSide] = useState<string | null>(null)
   const [pressedSide, setPressedSide] = useState<string | null>(null)
+  const [flashSide, setFlashSide]     = useState<string | null>(null)
   const [amount, setAmount]       = useState('100')
   const [leverage, setLeverage]   = useState(1000)
   const [showDeposit, setShowDeposit]   = useState(false)
@@ -808,12 +809,17 @@ export default function TradePage() {
                 const col   = isLong ? green : red;
                 return (
                   <button
-                    key={t}
+                    key={`${t}-${flashSide === val ? 'flash' : 'idle'}`}
+                    className={flashSide === val ? (isLong ? styles.flashGreen : styles.flashRed) : ''}
                     onMouseEnter={() => setHoveredSide(val)}
                     onMouseLeave={() => { setHoveredSide(null); setPressedSide(null); }}
                     onMouseDown={() => setPressedSide(val)}
                     onMouseUp={() => setPressedSide(null)}
-                    onClick={() => setSide(val)}
+                    onClick={() => {
+                      setSide(val);
+                      setFlashSide(val);
+                      setTimeout(() => setFlashSide(null), 280);
+                    }}
                     style={{
                       flex: 1,
                       padding: '12px 0',
