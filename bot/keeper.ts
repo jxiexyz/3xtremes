@@ -33,9 +33,19 @@ const ROUND_ENGINE_ABI = parseAbi([
   "event RoundSettled(uint256 indexed roundId, uint256 endPrice, uint256 endTime)",
 ]);
 
+const POSITION_MANAGER_ABI = parseAbi([
+  "function liquidatePosition(uint256 positionId) external",
+  "function checkLiquidation(uint256 positionId) external view returns (bool)",
+  "function getPosition(uint256 positionId) external view returns (tuple(uint256 positionId, address trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice, bool isOpen, bool isLiquidated, uint256 openTimestamp, uint256 closeTimestamp, int256 realizedPnL))",
+  "event PositionOpened(uint256 indexed positionId, address indexed trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice)",
+  "event PositionClosed(uint256 indexed positionId, address indexed trader, uint256 exitPrice, int256 pnl, uint256 closeTimestamp)",
+  "event PositionLiquidated(uint256 indexed positionId, address indexed trader, address indexed liquidator, uint256 liquidationPrice, uint256 marginLost)",
+]);
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const ROUND_ENGINE_ADDRESS = process.env.ROUND_ENGINE_ADDRESS as `0x${string}`;
+const POSITION_MANAGER_ADDRESS = process.env.POSITION_MANAGER_ADDRESS as `0x${string}`;
 let rawKey = (process.env.KEEPER_PRIVATE_KEY || "").replace(/['"]/g, "").trim();
 if (rawKey && !rawKey.startsWith("0x")) {
   rawKey = `0x${rawKey}`;
@@ -106,7 +116,43 @@ let isSettling = false;
 let isStarting = false;
 let candleInterval: ReturnType<typeof setInterval> | null = null;
 let settleTimeout: ReturnType<typeof setTimeout> | null = null;
-let candleHistory: any[] = []; // Stores last 200 candles across rounds
+let candleHistory: any[] = [];
+let openPositions = new Map<string, any>();
+let liquidating = new Set<string>();
+
+async function watchEvents() {
+  log("👀 Watching PositionOpened & PositionClosed events...");
+  publicClient.watchContractEvent({
+    address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI, eventName: "PositionOpened",
+    onLogs: (logs) => {
+      for (const l of logs) {
+        const args = (l as any).args;
+        openPositions.set(args.positionId.toString(), args);
+        log(`➕ Position #${args.positionId} opened`);
+      }
+    }
+  });
+  publicClient.watchContractEvent({
+    address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI, eventName: "PositionClosed",
+    onLogs: (logs) => {
+      for (const l of logs) {
+        const args = (l as any).args;
+        openPositions.delete(args.positionId.toString());
+        log(`➖ Position #${args.positionId} closed`);
+      }
+    }
+  });
+  publicClient.watchContractEvent({
+    address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI, eventName: "PositionLiquidated",
+    onLogs: (logs) => {
+      for (const l of logs) {
+        const args = (l as any).args;
+        openPositions.delete(args.positionId.toString());
+        log(`💀 Position #${args.positionId} liquidated externally`);
+      }
+    }
+  });
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -325,8 +371,11 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     candleHistory.push(candleMsg);
     if (candleHistory.length > 200) candleHistory.shift();
 
-    // Update price on-chain every SECOND for ultra-high accuracy (Crucial for 10,000x leverage)
+    // Update price on-chain every SECOND for ultra-high accuracy
     updatePriceOnChain(candle.close);
+
+    // --- INSTANT LIQUIDATION CHECK ---
+    checkAllLiquidations(candle.high, candle.low);
 
     broadcast(candleMsg);
 
@@ -410,6 +459,50 @@ async function updatePriceOnChain(price: number) {
   }
 }
 
+// --- LIQUIDATION LOGIC ---
+
+async function checkAllLiquidations(high: number, low: number) {
+  if (openPositions.size === 0) return;
+  const hiBig = BigInt(Math.floor(high));
+  const loBig = BigInt(Math.floor(low));
+
+  for (const [id, pos] of openPositions) {
+    if (liquidating.has(id)) continue;
+    const hit = pos.isLong ? loBig <= pos.liquidationPrice : hiBig >= pos.liquidationPrice;
+    if (hit) doLiquidate(id, pos);
+  }
+}
+
+async function doLiquidate(id: string, pos: any) {
+  if (liquidating.has(id)) return;
+  liquidating.add(id);
+
+  try {
+    const ok = await publicClient.readContract({
+      address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI,
+      functionName: "checkLiquidation", args: [pos.positionId],
+    }) as boolean;
+
+    if (!ok) {
+      liquidating.delete(id);
+      return;
+    }
+
+    log(`🔥 Liquidating #${id} | price hit threshold`);
+    const hash = await walletClient.writeContract({
+      address: POSITION_MANAGER_ADDRESS, abi: POSITION_MANAGER_ABI,
+      functionName: "liquidatePosition", args: [pos.positionId],
+    });
+    log(`📤 liquidatePosition(#${id}) tx: ${hash}`);
+    await publicClient.waitForTransactionReceipt({ hash });
+    openPositions.delete(id);
+    liquidating.delete(id);
+  } catch (err: any) {
+    log(`❌ liquidatePosition(#${id}) error: ${err.message}`);
+    liquidating.delete(id);
+  }
+}
+
 function stopLoop() {
   if (candleInterval) { clearInterval(candleInterval); candleInterval = null; }
   if (settleTimeout) { clearTimeout(settleTimeout); settleTimeout = null; }
@@ -422,6 +515,8 @@ async function init() {
   log(`👛 Wallet: ${account.address}`);
   log(`📄 RoundEngine: ${ROUND_ENGINE_ADDRESS}`);
   log(`📡 WebSocket: ws://localhost:${WS_PORT}`);
+
+  watchEvents();
 
   const active = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
 
