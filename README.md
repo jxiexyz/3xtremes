@@ -7,7 +7,7 @@
 ## Features
 
 - **60-Second Trading Rounds:** Fast-paced, continuous loops of market action. No waiting.
-- **10,000x Maximum Leverage:** Multiply your purchasing power. A 0.01% price movement can double your money—or destroy it.
+- **10,000x Maximum Leverage:** Multiply your purchasing power. A 0.01% price movement can double your money or destroy it.
 - **Instant Liquidations:** No margin calls. No partial liquidations. If your position hits -100% PnL, our Keeper bot wipes out the account instantly.
 - **Optimistic UI Architecture:** Zero-latency visual execution. Liquidations and balance deductions reflect immediately on the frontend without waiting for blockchain block confirmations.
 - **On-Chain Resolution:** Price feeds, settlements, and funds are handled securely via smart contracts on the Arc Testnet.
