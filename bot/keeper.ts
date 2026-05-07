@@ -226,7 +226,7 @@ async function sendTx(label: string, fn: () => Promise<`0x${string}`>): Promise<
   try {
     const hash = await fn();
     log(`📤 ${label} tx: ${hash}`);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash, pollingInterval: 500 });
     if (receipt.status === "success") {
       log(`✅ ${label} confirmed (block ${receipt.blockNumber})`);
       return true;
@@ -363,8 +363,8 @@ async function startRound() {
   isStarting = false;
 
   if (!ok) {
-    log("⚠️  startRound gagal, retry in 3s...");
-    setTimeout(startRound, 3000);
+    log("⚠️  startRound gagal, retry in 1s...");
+    setTimeout(startRound, 1000);
     return;
   }
 
@@ -448,10 +448,10 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     idx++;
   }, 1000);
 
-  // Settle after all candles finish + 2s safety buffer (block.timestamp can lag)
-  const settleDelay = (candles.length + 2) * 1000;
+  // Settle EXACTLY after the last candle (0 buffer, contract will accept it immediately if timestamp matches)
+  const settleDelay = candles.length * 1000;
   settleTimeout = setTimeout(() => settle(roundId, finalPrice), settleDelay);
-  log(`⏰ Settle scheduled in ${settleDelay}ms | candles=${candles.length} +2s buffer`);
+  log(`⏰ Settle scheduled in ${settleDelay}ms | candles=${candles.length}`);
 }
 
 async function settle(roundId: number, finalPrice: number) {
@@ -478,7 +478,7 @@ async function settle(roundId: number, finalPrice: number) {
       log(`✅ Round #${roundId} settled!`);
       broadcast({ type: "ROUND_SETTLED", roundId, finalPrice });
       isSettling = false;
-      setTimeout(startRound, 1000);
+      setTimeout(startRound, 200); // 200ms instead of 1000ms
       return;
     }
 

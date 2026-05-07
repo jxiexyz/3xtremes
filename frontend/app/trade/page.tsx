@@ -557,9 +557,7 @@ export default function TradePage() {
   }, []);
 
   const [side, setSide]           = useState<'buy' | 'sell'>('buy')
-  const [hoveredSide, setHoveredSide] = useState<string | null>(null)
-  const [pressedSide, setPressedSide] = useState<string | null>(null)
-  const [flashSide, setFlashSide]     = useState<string | null>(null)
+  const [flashSide, setFlashSide] = useState<string | null>(null)
   const [amount, setAmount]       = useState('100')
   const [leverage, setLeverage]   = useState(1000)
   const [showDeposit, setShowDeposit]   = useState(false)
@@ -797,48 +795,63 @@ export default function TradePage() {
               </div>
             )}
             <div className={styles.orderTitle}>Open Position</div>
+            {/* Native CSS :active + Keyframe Animations */}
+            <style>{`
+              @keyframes popGreen {
+                0% { transform: scale(1); background: rgba(16,185,129,0.08); box-shadow: none; }
+                50% { transform: scale(0.92); background: rgba(16,185,129,0.4) !important; box-shadow: 0 0 20px rgba(16,185,129,0.6) !important; color: #fff !important; }
+                100% { transform: scale(1); background: rgba(16,185,129,0.08); box-shadow: none; }
+              }
+              @keyframes popRed {
+                0% { transform: scale(1); background: rgba(239,68,68,0.08); box-shadow: none; }
+                50% { transform: scale(0.92); background: rgba(239,68,68,0.4) !important; box-shadow: 0 0 20px rgba(239,68,68,0.6) !important; color: #fff !important; }
+                100% { transform: scale(1); background: rgba(239,68,68,0.08); box-shadow: none; }
+              }
+              .anim-flash-buy {
+                animation: popGreen 0.25s ease-out forwards !important;
+              }
+              .anim-flash-sell {
+                animation: popRed 0.25s ease-out forwards !important;
+              }
+              #btn-long, #btn-short {
+                transition: transform 0.1s ease, background 0.15s ease !important;
+              }
+              #btn-long:active, #btn-short:active {
+                transform: scale(0.95) !important;
+              }
+            `}</style>
             <div style={{ display: 'flex', marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               {(['Long', 'Short'] as const).map((t, i) => {
-                const val = i === 0 ? 'buy' : 'sell';
-                const isSelected = side === val;
+                const val    = i === 0 ? 'buy' : 'sell';
                 const isLong = i === 0;
-                const isHov = hoveredSide === val;
-                const isPrs = pressedSide === val;
-                const green = '#10b981';
-                const red   = '#ef4444';
-                const col   = isLong ? green : red;
+                const isSel  = side === val;
+                const col    = isLong ? '#10b981' : '#ef4444';
                 return (
                   <button
+                    id={isLong ? 'btn-long' : 'btn-short'}
                     key={`${t}-${flashSide === val ? 'flash' : 'idle'}`}
-                    className={flashSide === val ? (isLong ? styles.flashGreen : styles.flashRed) : ''}
-                    onMouseEnter={() => setHoveredSide(val)}
-                    onMouseLeave={() => { setHoveredSide(null); setPressedSide(null); }}
-                    onMouseDown={() => setPressedSide(val)}
-                    onMouseUp={() => setPressedSide(null)}
+                    className={flashSide === val ? `anim-flash-${val}` : ''}
                     onClick={() => {
                       setSide(val);
                       setFlashSide(val);
-                      setTimeout(() => setFlashSide(null), 280);
+                      setTimeout(() => setFlashSide(null), 250);
                     }}
                     style={{
                       flex: 1,
                       padding: '12px 0',
-                      background: isSelected
-                        ? `rgba(${isLong ? '16,185,129' : '239,68,68'},${isHov ? '0.12' : '0.07'})`
-                        : isHov ? 'rgba(255,255,255,0.05)' : 'transparent',
                       border: 'none',
-                      borderBottom: `2px solid ${isSelected ? col : 'transparent'}`,
+                      borderBottom: `2px solid ${isSel ? col : 'transparent'}`,
                       borderRadius: '6px 6px 0 0',
                       cursor: 'pointer',
                       fontWeight: 700,
                       fontSize: 13,
                       fontFamily: 'Inter Tight, sans-serif',
                       letterSpacing: '0.03em',
-                      color: isSelected ? col : isHov ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.35)',
-                      textShadow: isSelected ? `0 0 14px ${col}80` : 'none',
-                      boxShadow: isSelected ? `inset 0 -2px 14px ${col}22` : 'none',
-                      transform: isPrs ? 'scale(0.94)' : 'scale(1)',
-                      transition: 'background 0.15s, color 0.15s, transform 0.08s, box-shadow 0.15s',
+                      color: isSel ? col : 'rgba(255,255,255,0.35)',
+                      background: isSel
+                        ? `rgba(${isLong ? '16,185,129' : '239,68,68'}, 0.08)`
+                        : 'transparent',
+                      textShadow: isSel ? `0 0 14px ${col}88` : 'none',
                     }}
                   >{t}</button>
                 );
@@ -979,14 +992,16 @@ export default function TradePage() {
             <div style={{ marginTop: 'auto' }}>
               <button 
                 disabled={address ? (isOrderDisabled || isTxPending || countdown <= 7) : false}
-                className={`w-full py-4 rounded-xl text-[15px] font-bold tracking-wide transition-all flex items-center justify-center gap-2 ${
+                className={`w-full py-4 rounded-xl text-[15px] font-bold tracking-wide transition-all flex items-center justify-center gap-2 active:scale-[0.98] active:brightness-90 ${
                   !address 
                     ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_20px_rgba(37,99,235,0.25)]' 
                     : isTxPending
-                      ? 'bg-white/[0.05] text-white/70 cursor-not-allowed border border-white/[0.05]'
+                      ? 'bg-white/[0.05] text-white/70 cursor-not-allowed border border-white/[0.05] active:scale-100 active:brightness-100'
                       : (isOrderDisabled || countdown <= 7)
-                        ? 'bg-white/[0.03] text-white/20 cursor-not-allowed border border-white/[0.05]'
-                        : side === 'buy' ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_20px_rgba(16,185,129,0.25)]' : 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_4px_20px_rgba(244,63,94,0.25)]'
+                        ? 'bg-white/[0.03] text-white/20 cursor-not-allowed border border-white/[0.05] active:scale-100 active:brightness-100'
+                        : side === 'buy' 
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_20px_rgba(16,185,129,0.25)] hover:shadow-[0_6px_24px_rgba(16,185,129,0.4)]' 
+                          : 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_4px_20px_rgba(244,63,94,0.25)] hover:shadow-[0_6px_24px_rgba(244,63,94,0.4)]'
                 }`} 
                 onClick={() => {
                   if (!address) return setShowConnect(true)
