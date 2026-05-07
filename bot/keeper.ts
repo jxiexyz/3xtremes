@@ -85,11 +85,16 @@ wss.on("connection", (ws) => {
     }
   }, 15000);
 
-  ws.on("message", (data) => {
+  ws.on("message", async (data) => {
     try {
       const msg = JSON.parse(data.toString());
       if (msg.type === "REQUEST_LIQUIDATION") {
-        log(`📢 Liquidation request relayed for #${msg.positionId}`);
+        const pid = msg.positionId.toString();
+        log(`📢 Liquidation request RECEIVED for #${pid} - Executing NOW!`);
+        const targetPos = openPositions.get(pid);
+        if (targetPos) {
+          doLiquidate(pid, targetPos);
+        }
         broadcast(msg);
       }
     } catch (e) {}
@@ -154,6 +159,31 @@ async function watchEvents() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function loadExistingPositions() {
+  log("📂 Scanning chain for existing open positions...");
+  try {
+    const currentBlock = await publicClient.getBlockNumber();
+    const fromBlock = currentBlock > 10000n ? currentBlock - 10000n : 0n;
+
+    const [opened, closed, liquidated] = await Promise.all([
+      publicClient.getLogs({ address: POSITION_MANAGER_ADDRESS, event: parseAbiItem("event PositionOpened(uint256 indexed positionId, address indexed trader, uint256 roundId, bool isLong, uint256 entryPrice, uint256 margin, uint256 leverage, uint256 size, uint256 liquidationPrice)"), fromBlock }),
+      publicClient.getLogs({ address: POSITION_MANAGER_ADDRESS, event: parseAbiItem("event PositionClosed(uint256 indexed positionId, address indexed trader, uint256 exitPrice, int256 pnl, uint256 closeTimestamp)"), fromBlock }),
+      publicClient.getLogs({ address: POSITION_MANAGER_ADDRESS, event: parseAbiItem("event PositionLiquidated(uint256 indexed positionId, address indexed trader, address indexed liquidator, uint256 liquidationPrice, uint256 marginLost)"), fromBlock })
+    ]);
+
+    for (const l of opened) {
+      const args = (l as any).args;
+      openPositions.set(args.positionId.toString(), args);
+    }
+    for (const l of closed) openPositions.delete((l as any).args.positionId.toString());
+    for (const l of liquidated) openPositions.delete((l as any).args.positionId.toString());
+
+    log(`✅ Loaded ${openPositions.size} open positions from chain scan.`);
+  } catch (err: any) {
+    log(`⚠️ Load positions failed: ${err.message}`);
+  }
+}
 
 function log(msg: string) {
   console.log(`[${new Date().toISOString()}] ${msg}`);
@@ -515,6 +545,7 @@ async function init() {
   log(`📄 RoundEngine: ${ROUND_ENGINE_ADDRESS}`);
   log(`📡 WebSocket: ws://localhost:${WS_PORT}`);
 
+  await loadExistingPositions();
   watchEvents();
 
   const active = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
