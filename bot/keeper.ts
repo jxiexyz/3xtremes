@@ -363,9 +363,15 @@ async function startRound() {
   isStarting = false;
 
   if (!ok) {
-    log("⚠️  startRound gagal, retry in 1s...");
-    setTimeout(startRound, 1000);
-    return;
+    // Safety check: maybe the tx succeeded but we lost the receipt connection?
+    const isActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
+    if (isActive) {
+      log("✅ startRound tx receipt lost, but round is actually ACTIVE on-chain. Proceeding...");
+    } else {
+      log("⚠️  startRound gagal (Not active), retry in 1s...");
+      setTimeout(startRound, 1000);
+      return;
+    }
   }
 
   // Read round info + seed from chain
