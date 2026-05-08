@@ -392,8 +392,8 @@ export default function TradePage() {
   }, []);
 
   const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
-  // Table and Chart instantly hide positions that are wiped out or currently closing
-  const openPositions = allPositions.filter((p: any) => p.isOpen && !closingPositionIds.has(p.positionId.toString()))
+  // Table and Chart show positions normally while closing, relying on the CLOSING... spinner in the UI
+  const openPositions = allPositions.filter((p: any) => p.isOpen)
   const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()))
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
@@ -407,6 +407,7 @@ export default function TradePage() {
       if (!pos || !pos.isOpen) {
         next.delete(id);
         changed = true;
+        showToast('success', 'Position Closed', 'Your position has been successfully closed on-chain.');
       }
     }
     if (changed) setClosingPositionIds(next);
@@ -543,7 +544,6 @@ export default function TradePage() {
             // Wait for the blockchain polling to officially mark p.isOpen as false,
             // which will naturally remove it from openPositions.
             console.log('✅ CLOSE_CONFIRMED from bot:', msg.tx);
-            showToast('success', 'Position Closing', 'Transaction submitted to blockchain.');
 
           } else if (msg.type === "CLOSE_FAILED") {
             setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
