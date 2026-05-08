@@ -1192,8 +1192,8 @@ export default function TradePage() {
                       leverage: parsedLev,
                       price: rawPrice,
                     }));
-                    // ✅ Posisi sudah tampil optimistic — tombol langsung unlock
-                    setIsTxPending(false);
+                    // ✅ Posisi sudah tampil optimistic — tombol loading selama 2 detik untuk mencegah spam
+                    setTimeout(() => setIsTxPending(false), 2000);
                     setTradeSuccess(true);
                     setTimeout(() => setTradeSuccess(false), 2000);
                   } else {
