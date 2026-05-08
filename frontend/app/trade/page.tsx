@@ -404,7 +404,9 @@ export default function TradePage() {
     const next = new Set(closingPositionIds);
     for (const id of Array.from(next)) {
       const pos = allPositions.find((p: any) => p.positionId.toString() === id);
-      if (!pos || !pos.isOpen) {
+      // ONLY clear if we found the position and it's officially closed.
+      // If pos is undefined, it might still be loading from blockchain.
+      if (pos && !pos.isOpen) {
         next.delete(id);
         changed = true;
         showToast('success', 'Position Closed', 'Your position has been successfully closed on-chain.');
@@ -544,6 +546,8 @@ export default function TradePage() {
             // Wait for the blockchain polling to officially mark p.isOpen as false,
             // which will naturally remove it from openPositions.
             console.log('✅ CLOSE_CONFIRMED from bot:', msg.tx);
+            refetchBalance();
+            refetchPositionIds();
 
           } else if (msg.type === "CLOSE_FAILED") {
             setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
