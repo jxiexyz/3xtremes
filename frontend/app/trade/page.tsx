@@ -405,6 +405,15 @@ export default function TradePage() {
     });
   };
 
+  const [expectedBalance, setExpectedBalance] = useState<number | null>(null);
+
+  // Clear expected balance once the actual blockchain balance reaches or drops below it
+  useEffect(() => {
+    if (expectedBalance !== null && balance <= expectedBalance + 0.01) { // 0.01 tolerance for precision
+      setExpectedBalance(null);
+    }
+  }, [balance, expectedBalance]);
+
   // --- OPTIMISTIC BALANCE LOGIC ---
   // Use useMemo (not useEffect+setState) so offset is computed synchronously
   // in the SAME render as positionsRaw changes — eliminates balance flicker.
@@ -456,14 +465,7 @@ export default function TradePage() {
   const getTradeErrorMsg = (reason: string) =>
     TRADE_ERROR_MESSAGES[reason] ?? `An unexpected error occurred (${reason}). Please try again.`;
 
-  const [expectedBalance, setExpectedBalance] = useState<number | null>(null);
 
-  // Clear expected balance once the actual blockchain balance reaches or drops below it
-  useEffect(() => {
-    if (expectedBalance !== null && balance <= expectedBalance + 0.01) { // 0.01 tolerance for precision
-      setExpectedBalance(null);
-    }
-  }, [balance, expectedBalance]);
 
   const isBalanceSyncing = isTxPending || 
     expectedBalance !== null ||
