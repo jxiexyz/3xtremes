@@ -347,7 +347,7 @@ function LogoIcon({ size = 20 }: { size?: number }) {
 export default function TradePage() {
   const { address } = useAccount()
 
-  const { data: usccRaw } = useReadContract({
+  const { data: usccRaw, refetch: refetchBalance } = useReadContract({
     address: CONTRACTS.CREDIT_VAULT as `0x${string}`,
     abi: CREDIT_VAULT_ABI,
     functionName: 'getUSCCBalance',
@@ -356,7 +356,7 @@ export default function TradePage() {
   })
   const balance = usccRaw ? Number(usccRaw) / 1e6 : 0
 
-  const { data: positionIds } = useReadContract({
+  const { data: positionIds, refetch: refetchPositionIds } = useReadContract({
     address: CONTRACTS.POSITION_MANAGER as `0x${string}`,
     abi: POSITION_MANAGER_ABI,
     functionName: 'getUserPositions',
@@ -489,18 +489,27 @@ export default function TradePage() {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "POSITION_CONFIRMED") {
-            // On-chain tx submitted — mark optimistic position as confirmed so spinner stops
-            setOptimisticPositions(prev => prev.map(p => 
-              (p.trader?.toLowerCase() === msg.trader?.toLowerCase() && p.isLong === msg.isLong && !p._txConfirmed) 
-                ? { ...p, _txConfirmed: true } 
-                : p
-            ));
-            if (msg.trader?.toLowerCase() === address?.toLowerCase()) {
-              setIsTxPending(false);
-              setTradeSuccess(true);
-              setTimeout(() => setTradeSuccess(false), 2000);
-            }
             console.log('✅ POSITION_CONFIRMED from bot:', msg.tx);
+            if (msg.trader?.toLowerCase() === address?.toLowerCase()) {
+              // Fetch latest blockchain state BEFORE removing loading spinners
+              Promise.all([refetchBalance(), refetchPositionIds()]).then(() => {
+                setOptimisticPositions(prev => prev.map(p => 
+                  (p.trader?.toLowerCase() === msg.trader?.toLowerCase() && p.isLong === msg.isLong && !p._txConfirmed) 
+                    ? { ...p, _txConfirmed: true } 
+                    : p
+                ));
+                setIsTxPending(false);
+                setTradeSuccess(true);
+                setTimeout(() => setTradeSuccess(false), 2000);
+              });
+            } else {
+              // Background update for other traders
+              setOptimisticPositions(prev => prev.map(p => 
+                (p.trader?.toLowerCase() === msg.trader?.toLowerCase() && p.isLong === msg.isLong && !p._txConfirmed) 
+                  ? { ...p, _txConfirmed: true } 
+                  : p
+              ));
+            }
 
           } else if (msg.type === "POSITION_FAILED") {
             // Rollback: remove ALL optimistic positions for this trader
