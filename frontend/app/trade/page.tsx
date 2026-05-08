@@ -415,23 +415,9 @@ export default function TradePage() {
   }, [balance, expectedBalance]);
 
   // --- OPTIMISTIC BALANCE LOGIC ---
-  // Use useMemo (not useEffect+setState) so offset is computed synchronously
-  // in the SAME render as positionsRaw changes — eliminates balance flicker.
-  const optimisticBalanceOffset = useMemo(() => {
-    let offset = 0;
-    // Deduct margin for positions still optimistic (not yet confirmed on-chain)
-    optimisticPositions.forEach((p: any) => {
-      // Keep offset if tx is unconfirmed OR if we are still waiting for RPC balance to update
-      if (!p._txConfirmed || expectedBalance !== null) {
-        const margin = Number(p.margin) / 1e6;
-        const openFee = margin * Number(p.leverage) * 0.0001;
-        offset += margin + openFee;
-      }
-    });
-    return offset;
-  }, [optimisticPositions, expectedBalance]);
-
-  const displayBalance = Math.max(0, balance - optimisticBalanceOffset);
+  // Freeze the displayed balance to the expected exact amount after a trade
+  // This completely eliminates UI jitter while waiting for the RPC node to sync.
+  const displayBalance = expectedBalance !== null ? expectedBalance : Math.max(0, balance);
 
   const [candles, setCandles] = useState<Candle[]>([])
   const [isCandle, setIsCandle] = useState(true)
@@ -1187,7 +1173,8 @@ export default function TradePage() {
 
                   // ── Set expected balance so topbar spinner stays until the exact new balance is fetched ──
                   const totalReq = (marginRaw + (marginRaw * parsedLev * 0.0001)) / 1e6;
-                  setExpectedBalance(balance - totalReq);
+                  const currentDisplayed = expectedBalance !== null ? expectedBalance : balance;
+                  setExpectedBalance(currentDisplayed - totalReq);
 
                   // ── Optimistic UI: add fake position immediately ──
                   const optKey = `${address}_${rawPrice}_${isLong}`;
