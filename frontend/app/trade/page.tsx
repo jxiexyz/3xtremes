@@ -417,7 +417,8 @@ export default function TradePage() {
       if (wipedOutIds.has(posId) && !p.isLiquidated) {
         const margin = Number(p.margin) / 1e6;
         const pnl = Number(p.realizedPnL) / 1e6;
-        offset += margin + pnl;
+        const blockchainRefund = Math.max(0, margin + pnl); // Clamp to 0 since contract doesn't return negative balance
+        offset += blockchainRefund;
       }
     });
     // Deduct margin for positions still optimistic (not yet confirmed on-chain)
