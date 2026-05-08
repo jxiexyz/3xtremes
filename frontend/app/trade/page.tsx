@@ -1294,7 +1294,7 @@ export default function TradePage() {
               ) : (openPositions.length > 0 || optimisticPositions.length > 0) ? (
                 <table className={styles.tbl}>
                   <thead>
-                    <tr><th>Side/Entry</th><th>PNL</th><th style={{ textAlign: 'right' }}>Action</th></tr>
+                    <tr><th>Side/Entry</th><th>Margin</th><th>PNL</th><th style={{ textAlign: 'right' }}>Action</th></tr>
                   </thead>
                   <tbody>
                     {(() => {
@@ -1333,6 +1333,12 @@ export default function TradePage() {
                               <div className="flex items-center gap-2.5">
                                 <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 11 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
                                 <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>{fmtPrice(p.entryPrice)}</span>
+                              </div>
+                            </td>
+                            <td style={{ verticalAlign: 'middle' }}>
+                              <div className="flex flex-col">
+                                <span style={{ fontFamily: 'var(--mono)', fontSize: 12, fontWeight: 600 }}>${margin.toFixed(2)}</span>
+                                <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>{lev}x</span>
                               </div>
                             </td>
                             <td style={{ color: isFinalPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
