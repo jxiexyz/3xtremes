@@ -495,6 +495,11 @@ export default function TradePage() {
                 ? { ...p, _txConfirmed: true } 
                 : p
             ));
+            if (msg.trader?.toLowerCase() === address?.toLowerCase()) {
+              setIsTxPending(false);
+              setTradeSuccess(true);
+              setTimeout(() => setTradeSuccess(false), 2000);
+            }
             console.log('✅ POSITION_CONFIRMED from bot:', msg.tx);
 
           } else if (msg.type === "POSITION_FAILED") {
@@ -866,7 +871,7 @@ export default function TradePage() {
                 </div>
               ) : (
                 <>
-                  <TradingChart data={candles} isCandle={isCandle} positions={[...chartPositions, ...optimisticPositions.filter(p => !wipedOutIds.has(p.positionId.toString()))]} showLines={roundStatus === "Active"} />
+                  <TradingChart data={candles} isCandle={isCandle} positions={[...chartPositions, ...optimisticPositions.filter(p => !wipedOutIds.has(p.positionId.toString()) && p._txConfirmed)]} showLines={roundStatus === "Active"} />
                   
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
@@ -1189,10 +1194,7 @@ export default function TradePage() {
                       leverage: parsedLev,
                       price: rawPrice,
                     }));
-                    // ✅ Posisi sudah tampil optimistic — tombol loading selama 2 detik untuk mencegah spam
-                    setTimeout(() => setIsTxPending(false), 2000);
-                    setTradeSuccess(true);
-                    setTimeout(() => setTradeSuccess(false), 2000);
+                    // Keep isTxPending=true until POSITION_CONFIRMED or POSITION_FAILED arrives
                   } else {
                     showToast('error', 'Connection Lost', 'Not connected to trading server. Please refresh the page.');
                     setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== optKey));
@@ -1298,7 +1300,7 @@ export default function TradePage() {
                       // Filter optimistic: hapus jika real position sudah masuk dari chain
                       const realTraders = new Set(openPositions.map((p: any) => p.trader?.toLowerCase()));
                       const filteredOptimistic = optimisticPositions.filter(
-                        op => !realTraders.has(op.trader?.toLowerCase())
+                        op => !realTraders.has(op.trader?.toLowerCase()) && op._txConfirmed
                       );
                       return [...openPositions, ...filteredOptimistic].map((p: any) => {
                         const pnlIdx = ids.findIndex(id => id === p.positionId);
