@@ -443,6 +443,26 @@ export default function TradePage() {
   const [tradeSuccess, setTradeSuccess] = useState(false)
   const [isTxPending, setIsTxPending] = useState(false)
 
+  // --- TOAST NOTIFICATION ---
+  const [toast, setToast] = useState<{ type: 'error' | 'warning' | 'success'; title: string; message: string } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (type: 'error' | 'warning' | 'success', title: string, message: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ type, title, message });
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  };
+
+  const TRADE_ERROR_MESSAGES: Record<string, string> = {
+    max_retries_exceeded: 'The network is congested and the blockchain could not confirm your trade in time. Please try again in a moment.',
+    tx_reverted: 'Your transaction was rejected by the smart contract. This may be due to insufficient margin, position limits, or a lock window. Check your settings and retry.',
+    in_lock_window: 'Trading is locked during the final seconds of a round. Wait for the next round to start.',
+    insufficient_margin: 'Your USCC balance is too low to cover the required margin and fee for this position.',
+  };
+
+  const getTradeErrorMsg = (reason: string) =>
+    TRADE_ERROR_MESSAGES[reason] ?? `An unexpected error occurred (${reason}). Please try again.`;
+
   const isBalanceSyncing = isTxPending || 
     optimisticPositions.length > 0 || 
     closingPositionIds.size > 0 || 
@@ -484,7 +504,7 @@ export default function TradePage() {
             // Rollback: remove ALL optimistic positions for this trader
             setOptimisticPositions(prev => prev.filter(p => p.trader?.toLowerCase() !== msg.trader?.toLowerCase()));
             setIsTxPending(false);
-            alert(`Trade Failed: ${msg.reason}`);
+            showToast('error', 'Trade Entry Failed', getTradeErrorMsg(msg.reason));
 
           } else if (msg.type === "POSITION_LIQUIDATED") {
             // Bot push: optimistic liquidation lock
@@ -498,7 +518,7 @@ export default function TradePage() {
 
           } else if (msg.type === "CLOSE_FAILED") {
             setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
-            alert(`Close Failed: ${msg.reason}`);
+            showToast('error', 'Close Position Failed', getTradeErrorMsg(msg.reason));
 
           } else if (msg.type === "HISTORY") {
             const historyCandles = msg.history.map((c: any) => ({
@@ -705,6 +725,40 @@ export default function TradePage() {
 
   return (
     <div className={styles.root}>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          onClick={() => setToast(null)}
+          style={{
+            position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)',
+            zIndex: 99999, cursor: 'pointer', maxWidth: 420, width: 'calc(100% - 32px)',
+            background: toast.type === 'error' ? 'rgba(20,8,8,0.97)' : toast.type === 'success' ? 'rgba(4,20,12,0.97)' : 'rgba(18,14,4,0.97)',
+            border: `1px solid ${ toast.type === 'error' ? 'rgba(239,68,68,0.5)' : toast.type === 'success' ? 'rgba(16,185,129,0.5)' : 'rgba(245,158,11,0.5)'}`,
+            borderRadius: 14, padding: '14px 18px', backdropFilter: 'blur(20px)',
+            boxShadow: `0 8px 40px ${ toast.type === 'error' ? 'rgba(239,68,68,0.18)' : toast.type === 'success' ? 'rgba(16,185,129,0.18)' : 'rgba(245,158,11,0.18)'}`,
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+            animation: 'slideDownFadeIn 0.25s cubic-bezier(0.34,1.56,0.64,1)',
+          }}
+        >
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: toast.type === 'error' ? 'rgba(239,68,68,0.15)' : toast.type === 'success' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+          }}>
+            {toast.type === 'error'
+              ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#ef4444" strokeWidth="1.5"/><path d="M8 4.5v4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="11" r="0.75" fill="#ef4444"/></svg>
+              : toast.type === 'success'
+              ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#10b981" strokeWidth="1.5"/><path d="M5 8l2.5 2.5L11 5.5" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              : <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2L14.5 13.5H1.5L8 2Z" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round"/><path d="M8 6.5v3" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="11.5" r="0.6" fill="#f59e0b"/></svg>
+            }
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: toast.type === 'error' ? '#ef4444' : toast.type === 'success' ? '#10b981' : '#f59e0b', marginBottom: 4 }}>{toast.title}</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>{toast.message}</div>
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 16, flexShrink: 0, lineHeight: 1 }}>×</div>
+        </div>
+      )}
 
       {/* Main area */}
       <div className={styles.main}>
@@ -1084,19 +1138,19 @@ export default function TradePage() {
 
                   const parsedAmount = parseFloat(amount);
                   if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
-                    alert('Please enter a valid margin amount.');
+                    showToast('warning', 'Invalid Amount', 'Please enter a valid margin amount.');
                     setIsTxPending(false);
                     return;
                   }
                   const parsedLev = Number(leverage);
                   if (isNaN(parsedLev) || parsedLev < 10 || parsedLev > 10000) {
-                    alert('Leverage must be between 10x and 10,000x.');
+                    showToast('warning', 'Invalid Leverage', 'Leverage must be between 10x and 10,000x.');
                     setIsTxPending(false);
                     return;
                   }
                   const marginRaw = Math.floor(parsedAmount * 1e6);
                   if (marginRaw <= 0) {
-                    alert('Margin is too small.');
+                    showToast('warning', 'Margin Too Small', 'Margin must be at least 1 USCC.');
                     setIsTxPending(false);
                     return;
                   }
@@ -1143,7 +1197,7 @@ export default function TradePage() {
                     setTradeSuccess(true);
                     setTimeout(() => setTradeSuccess(false), 2000);
                   } else {
-                    alert('Not connected to trading server. Please refresh.');
+                    showToast('error', 'Connection Lost', 'Not connected to trading server. Please refresh the page.');
                     setOptimisticPositions(prev => prev.filter(p => p._optimisticKey !== optKey));
                     setIsTxPending(false);
                   }
