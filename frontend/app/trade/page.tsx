@@ -437,6 +437,8 @@ export default function TradePage() {
   const [isCandle, setIsCandle] = useState(true)
   const [countdown, setCountdown] = useState(60)
   const [roundStatus, setRoundStatus] = useState<string>("Active")
+  const [settlingCountdown, setSettlingCountdown] = useState(0)
+  const settlingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roundBaseTimeRef = useRef<number>(0)
 
   // UX States
@@ -508,13 +510,32 @@ export default function TradePage() {
 
           } else if (msg.type === "ROUND_SETTLING") {
             setRoundStatus("Settling Round...");
-            setOptimisticPositions([]); // Clear optimistic positions
+            setOptimisticPositions([]);
+            // Start countdown from 15s (avg block confirmation time)
+            setSettlingCountdown(15);
+            if (settlingTimerRef.current) clearInterval(settlingTimerRef.current);
+            settlingTimerRef.current = setInterval(() => {
+              setSettlingCountdown(prev => {
+                if (prev <= 1) { clearInterval(settlingTimerRef.current!); return 0; }
+                return prev - 1;
+              });
+            }, 1000);
           } else if (msg.type === "ROUND_SETTLED") {
             setRoundStatus("Starting Next Round...");
-            setOptimisticPositions([]); // Clear optimistic positions
+            setOptimisticPositions([]);
+            setSettlingCountdown(5);
+            if (settlingTimerRef.current) clearInterval(settlingTimerRef.current);
+            settlingTimerRef.current = setInterval(() => {
+              setSettlingCountdown(prev => {
+                if (prev <= 1) { clearInterval(settlingTimerRef.current!); return 0; }
+                return prev - 1;
+              });
+            }, 1000);
           } else if (msg.type === "ROUND_START") {
             setCountdown(60);
             setRoundStatus("Active");
+            setSettlingCountdown(0);
+            if (settlingTimerRef.current) clearInterval(settlingTimerRef.current);
 
           } else if (msg.type === "CANDLE") {
             const open  = Number(msg.open)  / 1e5;
@@ -781,7 +802,7 @@ export default function TradePage() {
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
                     <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#030712]/40 backdrop-blur-[2px] transition-all duration-500 animate-[fadeIn_0.3s_ease-out]">
-                      <div className="flex flex-col items-center gap-4 p-8 rounded-3xl bg-white/[0.03] border border-white/[0.08] shadow-2xl backdrop-blur-xl scale-100 animate-[zoomIn_0.3s_ease-out]">
+                      <div className="flex flex-col items-center gap-5 p-8 rounded-3xl bg-white/[0.03] border border-white/[0.08] shadow-2xl backdrop-blur-xl scale-100 animate-[zoomIn_0.3s_ease-out]">
                         <div className="relative">
                           <Loader2 size={32} className="text-emerald-400 animate-spin" />
                           <div className="absolute inset-0 blur-lg bg-emerald-400/20 animate-pulse" />
@@ -790,6 +811,26 @@ export default function TradePage() {
                           <div className="text-sm font-bold text-white uppercase tracking-[0.2em] drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">{roundStatus}</div>
                           <div className="text-[10px] text-white/40 font-medium uppercase tracking-[0.3em]">Syncing with chain</div>
                         </div>
+                        {settlingCountdown > 0 && (
+                          <div className="flex flex-col items-center gap-1">
+                            <div style={{
+                              fontFamily: 'var(--mono)',
+                              fontSize: 36,
+                              fontWeight: 900,
+                              color: settlingCountdown <= 5 ? '#10b981' : 'rgba(255,255,255,0.9)',
+                              lineHeight: 1,
+                              letterSpacing: '-0.04em',
+                              textShadow: settlingCountdown <= 5 ? '0 0 20px rgba(16,185,129,0.6)' : '0 0 20px rgba(255,255,255,0.2)',
+                              transition: 'color 0.5s ease, text-shadow 0.5s ease',
+                            }}>
+                              {settlingCountdown}s
+                            </div>
+                            <div className="text-[9px] text-white/30 uppercase tracking-[0.3em]">est. next round</div>
+                          </div>
+                        )}
+                        {settlingCountdown === 0 && (
+                          <div className="text-[10px] text-emerald-400/80 uppercase tracking-[0.2em] animate-pulse">Starting soon...</div>
+                        )}
                       </div>
                     </div>
                   )}
