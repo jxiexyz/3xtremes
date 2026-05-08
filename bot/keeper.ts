@@ -357,22 +357,45 @@ async function startRoundOnChain() {
       address: ROUND_ENGINE_ADDRESS,
       abi: ROUND_ENGINE_ABI,
       functionName: "startRound",
-      gas: 3000000n, // Bypass simulation with higher limit
+      gas: 3000000n,
     })
   );
 
   if (!ok) {
     const isActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
-    if (isActive) {
-      log("✅ startRound tx receipt lost, but active. Proceeding...");
-    } else {
-      log("⚠️  startRound gagal, retry in 1s...");
-      setTimeout(startRoundOnChain, 1000);
+    if (!isActive) {
+      log("⚠️  startRound gagal, retry in 2s...");
+      setTimeout(startRoundOnChain, 2000);
       return;
     }
+    log("✅ startRound tx receipt lost but round is active. Continuing...");
   }
-  
-  isBackgroundSettling = false; // Transition complete!
+
+  isBackgroundSettling = false; // Unblock trades ASAP
+
+  // Read the REAL seed from chain and stream with it
+  try {
+    const roundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
+    const startPrice = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getCurrentPrice" });
+    const seed = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getSeed", args: [roundId] });
+
+    const roundIdNum = Number(roundId);
+    const startPriceNum = Number(startPrice as bigint);
+    const seedBig = seed as bigint;
+
+    log(`🎲 Round #${roundIdNum} | Seed from chain: ${seedBig} | StartPrice: ${formatPrice(startPrice)}`);
+
+    const candles = computeCandles(seedBig, startPriceNum);
+    const finalPrice = candles[candles.length - 1].close;
+
+    broadcast({ type: "ROUND_SETTLED", roundId: roundIdNum - 1, finalPrice: startPriceNum });
+    broadcast({ type: "ROUND_START", roundId: roundIdNum, startPrice: startPriceNum });
+
+    streamCandles(roundIdNum, candles, finalPrice);
+  } catch (err: any) {
+    log(`⚠️ Failed to read new round info: ${err?.message}. Falling back to startRound()...`);
+    setTimeout(startRound, 2000);
+  }
 }
 
 async function startRound() {
@@ -487,29 +510,26 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
 
 async function handleOptimisticRoundEnd(roundId: number, finalPrice: number) {
   stopLoop();
-  isBackgroundSettling = true; // Block incoming trades temporarily
+  isBackgroundSettling = true;
 
-  // 1. Immediately tell frontend round settled
+  // 1. Immediately tell frontend the round is settling (clears positions/lines)
   broadcast({ type: "ROUND_SETTLING", roundId, finalPrice });
-  broadcast({ type: "ROUND_SETTLED", roundId, finalPrice });
 
-  // 2. Immediately start streaming next round in memory
-  const nextRoundId = roundId + 1;
-  const startPriceNum = finalPrice;
-  const seedHex = "0x" + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
-  const seedBig = BigInt(seedHex);
-  const nextCandles = computeCandles(seedBig, startPriceNum);
-  const nextFinalPrice = nextCandles[nextCandles.length - 1].close;
+  // 2. Stream placeholder candles (flat line at finalPrice) so UI isn't frozen
+  //    These are purely cosmetic — no positions can be opened during this phase
+  const placeholderCandles = Array.from({ length: 60 }, (_, i) => ({
+    second: i,
+    open: finalPrice,
+    high: finalPrice,
+    low: finalPrice,
+    close: finalPrice,
+  }));
+  // Don't stream placeholder — just leave the last candle frozen and show overlay
+  // Frontend already shows "Settling..." overlay from ROUND_SETTLING
 
-  log(`⚡ Optimistic Next Round #${nextRoundId} started in memory!`);
-  broadcast({ type: "ROUND_START", roundId: nextRoundId, startPrice: startPriceNum });
-  
-  streamCandles(nextRoundId, nextCandles, nextFinalPrice);
-
-  // 3. Perform on-chain settlement asynchronously with a 2-second buffer for timestamp
-  setTimeout(() => {
-    settleOnChain(roundId, finalPrice).catch(e => log("settleOnChain error: " + e));
-  }, 2000);
+  // 3. Perform on-chain settlement — WAIT for it to succeed before starting next round
+  log(`⚡ Starting background settlement for round #${roundId}...`);
+  await settleOnChain(roundId, finalPrice);
 }
 
 async function settleOnChain(roundId: number, finalPrice: number) {
@@ -523,20 +543,20 @@ async function settleOnChain(roundId: number, finalPrice: number) {
         abi: ROUND_ENGINE_ABI,
         functionName: "settleRound",
         args: [BigInt(Math.floor(finalPrice))],
-        gas: 3000000n, // Bypass simulation with higher limit for batch settlements
+        gas: 3000000n,
       })
     );
 
     if (ok) {
-      log(`✅ Round #${roundId} settled on-chain!`);
-      // Trigger startRound on-chain
-      setTimeout(startRoundOnChain, 200);
+      log(`✅ Round #${roundId} settled on-chain! PnL distributed to traders.`);
+      // Now start new round on-chain, then read REAL seed to stream
+      await startRoundOnChain();
       return;
     }
 
     attempts++;
-    log(`⏳ Retry settle (${attempts}/10) in 2s...`);
-    await new Promise((r) => setTimeout(r, 2000));
+    log(`⏳ Retry settle (${attempts}/10) in 3s...`);
+    await new Promise((r) => setTimeout(r, 3000));
   }
 
   log("❌ Settle gagal 10x — cancel round");
@@ -551,7 +571,7 @@ async function settleOnChain(roundId: number, finalPrice: number) {
     })
   );
 
-  isSettling = false;
+  isBackgroundSettling = false;
   setTimeout(startRound, 2000);
 }
 
