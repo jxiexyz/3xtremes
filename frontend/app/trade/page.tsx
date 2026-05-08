@@ -410,25 +410,16 @@ export default function TradePage() {
   // in the SAME render as positionsRaw changes — eliminates balance flicker.
   const optimisticBalanceOffset = useMemo(() => {
     let offset = 0;
-    // Hide margin that blockchain returned for a position we marked as liquidated locally,
-    // but on-chain it was closed normally (zombie state) — show as 0 until chain confirms
-    closedPositions.forEach((p: any) => {
-      const posId = p.positionId.toString();
-      if (wipedOutIds.has(posId) && !p.isLiquidated) {
-        const margin = Number(p.margin) / 1e6;
-        const pnl = Number(p.realizedPnL) / 1e6;
-        const blockchainRefund = Math.max(0, margin + pnl); // Clamp to 0 since contract doesn't return negative balance
-        offset += blockchainRefund;
-      }
-    });
     // Deduct margin for positions still optimistic (not yet confirmed on-chain)
     optimisticPositions.forEach((p: any) => {
-      const margin = Number(p.margin) / 1e6;
-      const openFee = margin * Number(p.leverage) * 0.0001;
-      offset += margin + openFee;
+      if (!p._txConfirmed) {
+        const margin = Number(p.margin) / 1e6;
+        const openFee = margin * Number(p.leverage) * 0.0001;
+        offset += margin + openFee;
+      }
     });
     return offset;
-  }, [closedPositions, wipedOutIds, optimisticPositions]);
+  }, [optimisticPositions]);
 
   const displayBalance = Math.max(0, balance - optimisticBalanceOffset);
 
