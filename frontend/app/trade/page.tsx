@@ -448,7 +448,7 @@ export default function TradePage() {
   const isBalanceSyncing = isTxPending || 
     optimisticPositions.length > 0 || 
     closingPositionIds.size > 0 || 
-    allPositions.some((p: any) => wipedOutIds.has(p.positionId.toString()) && !p.isLiquidated);
+    openPositions.some((p: any) => wipedOutIds.has(p.positionId.toString()) && !p.isLiquidated);
 
   useEffect(() => {
     // Mock loading state delay to show skeletons
