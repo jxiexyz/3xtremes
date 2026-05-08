@@ -464,9 +464,10 @@ export default function TradePage() {
     TRADE_ERROR_MESSAGES[reason] ?? `An unexpected error occurred (${reason}). Please try again.`;
 
   const isBalanceSyncing = isTxPending || 
-    optimisticPositions.length > 0 || 
+    optimisticPositions.some(p => !p._txConfirmed) || 
     closingPositionIds.size > 0 || 
-    openPositions.some((p: any) => wipedOutIds.has(p.positionId.toString()) && !p.isLiquidated);
+    openPositions.some((p: any) => wipedOutIds.has(p.positionId.toString()) && !p.isLiquidated) ||
+    roundStatus === "Settling Round...";
 
   useEffect(() => {
     // Mock loading state delay to show skeletons
@@ -496,8 +497,12 @@ export default function TradePage() {
           const msg = JSON.parse(event.data);
 
           if (msg.type === "POSITION_CONFIRMED") {
-            // On-chain tx submitted — already handled optimistically at click time
-            // Just log, no UI change needed
+            // On-chain tx submitted — mark optimistic position as confirmed so spinner stops
+            setOptimisticPositions(prev => prev.map(p => 
+              (p.trader?.toLowerCase() === msg.trader?.toLowerCase() && p.isLong === msg.isLong && !p._txConfirmed) 
+                ? { ...p, _txConfirmed: true } 
+                : p
+            ));
             console.log('✅ POSITION_CONFIRMED from bot:', msg.tx);
 
           } else if (msg.type === "POSITION_FAILED") {
