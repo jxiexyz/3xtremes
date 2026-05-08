@@ -392,11 +392,25 @@ export default function TradePage() {
   }, []);
 
   const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
-  // Table uses openPositions (including those currently closing, so it can show the "CLOSING..." button)
-  const openPositions = allPositions.filter((p: any) => p.isOpen)
-  // Chart instantly hides positions that are wiped out or currently closing
-  const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()) && !closingPositionIds.has(p.positionId.toString()))
+  // Table and Chart instantly hide positions that are wiped out or currently closing
+  const openPositions = allPositions.filter((p: any) => p.isOpen && !closingPositionIds.has(p.positionId.toString()))
+  const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()))
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
+
+  // Cleanup closing state once the blockchain confirms they are officially closed
+  useEffect(() => {
+    if (closingPositionIds.size === 0) return;
+    let changed = false;
+    const next = new Set(closingPositionIds);
+    for (const id of Array.from(next)) {
+      const pos = allPositions.find((p: any) => p.positionId.toString() === id);
+      if (!pos || !pos.isOpen) {
+        next.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) setClosingPositionIds(next);
+  }, [allPositions]); // Only run when allPositions from Wagmi updates
 
   const updateWipedOutIds = (id: string) => {
     setWipedOutIds(prev => {
