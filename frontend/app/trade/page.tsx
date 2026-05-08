@@ -412,14 +412,15 @@ export default function TradePage() {
     let offset = 0;
     // Deduct margin for positions still optimistic (not yet confirmed on-chain)
     optimisticPositions.forEach((p: any) => {
-      if (!p._txConfirmed) {
+      // Keep offset if tx is unconfirmed OR if we are still waiting for RPC balance to update
+      if (!p._txConfirmed || expectedBalance !== null) {
         const margin = Number(p.margin) / 1e6;
         const openFee = margin * Number(p.leverage) * 0.0001;
         offset += margin + openFee;
       }
     });
     return offset;
-  }, [optimisticPositions]);
+  }, [optimisticPositions, expectedBalance]);
 
   const displayBalance = Math.max(0, balance - optimisticBalanceOffset);
 
@@ -455,7 +456,17 @@ export default function TradePage() {
   const getTradeErrorMsg = (reason: string) =>
     TRADE_ERROR_MESSAGES[reason] ?? `An unexpected error occurred (${reason}). Please try again.`;
 
+  const [expectedBalance, setExpectedBalance] = useState<number | null>(null);
+
+  // Clear expected balance once the actual blockchain balance reaches or drops below it
+  useEffect(() => {
+    if (expectedBalance !== null && balance <= expectedBalance + 0.01) { // 0.01 tolerance for precision
+      setExpectedBalance(null);
+    }
+  }, [balance, expectedBalance]);
+
   const isBalanceSyncing = isTxPending || 
+    expectedBalance !== null ||
     optimisticPositions.some(p => !p._txConfirmed) || 
     closingPositionIds.size > 0 || 
     openPositions.some((p: any) => wipedOutIds.has(p.positionId.toString()) && !p.isLiquidated) ||
@@ -1171,6 +1182,10 @@ export default function TradePage() {
                   const liqPrice = isLong
                     ? Math.max(0, rawPrice - Math.floor(rawPrice / parsedLev))
                     : rawPrice + Math.floor(rawPrice / parsedLev);
+
+                  // ── Set expected balance so topbar spinner stays until the exact new balance is fetched ──
+                  const totalReq = (marginRaw + (marginRaw * parsedLev * 0.0001)) / 1e6;
+                  setExpectedBalance(balance - totalReq);
 
                   // ── Optimistic UI: add fake position immediately ──
                   const optKey = `${address}_${rawPrice}_${isLong}`;
