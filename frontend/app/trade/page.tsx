@@ -461,8 +461,10 @@ export default function TradePage() {
   useEffect(() => {
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "wss://3xtremes-production.up.railway.app";
     let reconnectTimeout: any;
+    let destroyed = false;
 
     function connect() {
+      if (destroyed) return;
       console.log("Connecting to WebSocket:", wsUrl);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -579,6 +581,7 @@ export default function TradePage() {
       };
 
       ws.onclose = () => {
+        if (destroyed) return;
         console.log("WebSocket disconnected. Retrying in 3s...");
         reconnectTimeout = setTimeout(connect, 3000);
       };
@@ -587,6 +590,7 @@ export default function TradePage() {
     connect();
 
     return () => {
+      destroyed = true;
       if (wsRef.current) wsRef.current.close();
       clearTimeout(reconnectTimeout);
     };
