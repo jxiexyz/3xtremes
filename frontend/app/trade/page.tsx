@@ -441,10 +441,14 @@ export default function TradePage() {
   const settlingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roundBaseTimeRef = useRef<number>(0)
 
-  // UX States
   const [isLoading, setIsLoading] = useState(true)
   const [tradeSuccess, setTradeSuccess] = useState(false)
   const [isTxPending, setIsTxPending] = useState(false)
+
+  const isBalanceSyncing = isTxPending || 
+    optimisticPositions.length > 0 || 
+    closingPositionIds.size > 0 || 
+    allPositions.some((p: any) => wipedOutIds.has(p.positionId.toString()) && !p.isLiquidated);
 
   useEffect(() => {
     // Mock loading state delay to show skeletons
@@ -711,7 +715,10 @@ export default function TradePage() {
             {address && (
               <div className={styles.tbBal}>
                 <span className={styles.tbBalLabel}>USCC</span>
-                <span>{displayBalance.toFixed(2)}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {displayBalance.toFixed(2)}
+                  {isBalanceSyncing && <Loader2 size={12} className="animate-spin text-emerald-400" />}
+                </span>
               </div>
             )}
 
