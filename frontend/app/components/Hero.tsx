@@ -142,7 +142,7 @@ export function Hero() {
             <div className="flex-1 text-center text-xs font-mono text-white/30">3xtremes</div>
           </div>
           {/* Mockup Body */}
-          <div className="aspect-[16/9] w-full bg-[#0a0d14] rounded-b-[24px] overflow-hidden relative border-t border-white/5 p-6 flex gap-6">
+          <div className="min-h-[350px] md:min-h-0 md:aspect-[16/9] w-full bg-[#0a0d14] rounded-b-[24px] overflow-hidden relative border-t border-white/5 p-4 md:p-6 flex flex-col md:flex-row gap-4 md:gap-6">
              {/* Left Sidebar */}
              <div className="w-64 border-r border-white/5 hidden md:flex flex-col gap-4 pr-6">
                 <div className="h-10 w-full bg-white/5 rounded-lg animate-pulse" />
@@ -152,20 +152,20 @@ export function Hero() {
                 <div className="mt-auto h-32 w-full bg-blue-600/10 border border-blue-500/20 rounded-xl" />
              </div>
              {/* Main Content Area */}
-             <div className="flex-1 flex flex-col gap-6">
+             <div className="flex-1 flex flex-col gap-4 md:gap-6">
                 {/* Top Stats */}
-                <div className="flex gap-4">
-                  <div className="flex-1 h-24 glass-panel rounded-2xl relative overflow-hidden flex items-center p-6">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1 h-20 md:h-24 glass-panel rounded-2xl relative overflow-hidden flex items-center p-4 md:p-6">
                     <div>
-                      <div className="text-white/40 text-xs font-medium mb-1">Max Leverage</div>
-                      <div className="text-2xl font-medium text-white tracking-tight"><Counter isVisible={isChartInView} /></div>
+                      <div className="text-white/40 text-[10px] md:text-xs font-medium mb-1">Max Leverage</div>
+                      <div className="text-xl md:text-2xl font-medium text-white tracking-tight"><Counter isVisible={isChartInView} /></div>
                     </div>
                     <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-blue-500/20 blur-3xl rounded-full" />
                   </div>
-                  <div className="flex-1 h-24 glass-panel rounded-2xl relative overflow-hidden flex items-center p-6">
+                  <div className="flex-1 h-20 md:h-24 glass-panel rounded-2xl relative overflow-hidden flex items-center p-4 md:p-6">
                     <div>
-                      <div className="text-white/40 text-xs font-medium mb-1">Blockchain Network</div>
-                      <div className="text-2xl font-medium text-white tracking-tight">ARC Testnet</div>
+                      <div className="text-white/40 text-[10px] md:text-xs font-medium mb-1">Blockchain Network</div>
+                      <div className="text-xl md:text-2xl font-medium text-white tracking-tight">ARC Testnet</div>
                     </div>
                   </div>
                 </div>

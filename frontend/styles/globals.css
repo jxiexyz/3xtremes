@@ -83,3 +83,18 @@
   @apply absolute rounded-full blur-[100px] pointer-events-none;
   background: radial-gradient(circle, rgba(59,130,246,0.15) 0%, rgba(59,130,246,0) 70%);
 }
+
+@keyframes iosPop {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes iosFadeIn {
+  0% { opacity: 0; backdrop-filter: blur(0px); }
+  100% { opacity: 1; backdrop-filter: blur(24px); }
+}
+
+@keyframes iosFadeInWallet {
+  0% { opacity: 0; backdrop-filter: blur(0px); }
+  100% { opacity: 1; backdrop-filter: blur(24px); }
+}

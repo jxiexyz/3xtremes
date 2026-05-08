@@ -10,7 +10,7 @@ import ConnectWalletModal from '../../components/wallet/ConnectWalletModal'
 import WithdrawModal from '../../components/wallet/WithdrawModal'
 import Link from 'next/link'
 import styles from './trade.module.css'
-import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2 } from 'lucide-react'
 
 // --- UX State Components ---
 function SkeletonLine({ width = '100%', height = '16px', className = '' }: { width?: string, height?: string, className?: string }) {
@@ -27,6 +27,48 @@ function EmptyState({ icon: Icon, title, desc }: { icon: any, title: string, des
       <div className="text-xs text-white/40 max-w-[200px] leading-relaxed">{desc}</div>
     </div>
   )
+}
+
+function Counter({ value, decimals = 2, className = "", prefix = "", suffix = "", style = {} }: { value: number, decimals?: number, className?: string, prefix?: string, suffix?: string, style?: any }) {
+  const [isMounted, setIsMounted] = useState(false);
+  const [displayValue, setDisplayValue] = useState(value);
+  const startTimeRef = useRef<number | null>(null);
+  const startValueRef = useRef(value);
+  const duration = 600; // ms
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) return;
+    if (startValueRef.current === value) return;
+    
+    startValueRef.current = displayValue;
+    startTimeRef.current = null;
+    
+    const animate = (time: number) => {
+      if (!startTimeRef.current) startTimeRef.current = time;
+      const progress = Math.min((time - startTimeRef.current) / duration, 1);
+      
+      // Cubic out easing
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const current = startValueRef.current + (value - startValueRef.current) * easedProgress;
+      
+      setDisplayValue(current);
+      
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        startValueRef.current = value;
+      }
+    };
+    
+    requestAnimationFrame(animate);
+  }, [value, isMounted]);
+
+  if (!isMounted) return <span className={className} style={style}>{prefix}{value.toFixed(decimals)}{suffix}</span>;
+  return <span className={className} style={style}>{prefix}{displayValue.toFixed(decimals)}{suffix}</span>;
 }
 
 
@@ -241,8 +283,29 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
   }, [positions, isCandle, showLines]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div ref={chartContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', inset: 0 }} />
+    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', containerType: 'inline-size' }}>
+      <style dangerouslySetInnerHTML={{__html: `
+        /* Hide TradingView watermark */
+        #tv-attr-logo, .tv-lightweight-charts-logo, a[href*="tradingview.com"] {
+          display: none !important;
+        }
+      `}} />
+
+      {/* 3xtremes Chart Watermark */}
+      <div style={{
+        position: 'absolute', pointerEvents: 'none', zIndex: 0, userSelect: 'none',
+        display: 'flex', alignItems: 'center', gap: '0.25em',
+        fontFamily: 'Space Grotesk, var(--font-sans), sans-serif',
+        fontSize: 'clamp(24px, 8cqw, 120px)', fontWeight: 900,
+        color: '#ffffff', opacity: 0.06, letterSpacing: '-0.02em',
+        textTransform: 'uppercase',
+        whiteSpace: 'nowrap'
+      }}>
+        <LogoIcon size="0.8em" />
+        3XTREMES
+      </div>
+
+      <div ref={chartContainerRef} style={{ width: '100%', height: '100%', position: 'absolute', inset: 0, zIndex: 1 }} />
       <div ref={tooltipRef} style={{
         position: 'absolute', display: 'none', padding: '8px 12px',
         background: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.1)',
@@ -335,7 +398,7 @@ function drawChart(canvas: HTMLCanvasElement, candles: Candle[]) {
 }
 
 // --- 3X SVG Logo ---
-function LogoIcon({ size = 20 }: { size?: number }) {
+function LogoIcon({ size = 20 }: { size?: number | string }) {
   return (
     <svg viewBox="0 0 100 100" width={size} height={size}>
       <path d="M 15 20 H 45 L 30 50 H 45 L 15 80" fill="none" stroke="#ffffff" strokeWidth="14" strokeLinecap="round" strokeLinejoin="round" />
@@ -346,6 +409,11 @@ function LogoIcon({ size = 20 }: { size?: number }) {
 
 export default function TradePage() {
   const { address } = useAccount()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const { data: usccRaw, refetch: refetchBalance } = useReadContract({
     address: CONTRACTS.CREDIT_VAULT as `0x${string}`,
@@ -378,8 +446,28 @@ export default function TradePage() {
   // Hybrid DEX: optimistic positions opened before blockchain confirmation
   const [optimisticPositions, setOptimisticPositions] = useState<any[]>([]);
   const [closingPositionIds, setClosingPositionIds] = useState<Set<string>>(new Set());
+  // Mirror closing IDs in a ref for always-fresh access inside derived values & callbacks
+  const closingIdsRef = useRef<Set<string>>(new Set());
+
+  // Close confirmation popup
+  const [closeConfirmPos, setCloseConfirmPos] = useState<any | null>(null);
 
   const [wipedOutIds, setWipedOutIds] = useState<Set<string>>(new Set());
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    closingIdsRef.current = closingPositionIds;
+  }, [closingPositionIds]);
+
+  const addClosingId = (posId: string) => {
+    closingIdsRef.current = new Set([...closingIdsRef.current, posId]);
+    setClosingPositionIds(new Set(closingIdsRef.current));
+  };
+
+  const removeClosingId = (posId: string) => {
+    closingIdsRef.current.delete(posId);
+    setClosingPositionIds(new Set(closingIdsRef.current));
+  };
   
   useEffect(() => {
     const saved = localStorage.getItem('3xtremes_liquidated_ids');
@@ -392,28 +480,42 @@ export default function TradePage() {
   }, []);
 
   const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
-  // Table and Chart show positions normally while closing, relying on the CLOSING... spinner in the UI
+  // Positions remain visible while closing, just marked as "CLOSING..." in the UI
   const openPositions = allPositions.filter((p: any) => p.isOpen)
+  const visibleOpenPositions = openPositions  // alias kept for clarity
   const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()))
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
+  // Optimistic positions should ONLY be shown if the trader does NOT have a real open position yet.
+  // We check against `allPositions` (not `openPositions`) so that closing positions still suppress the optimistic ghost.
+  const visibleOptimisticPositions = optimisticPositions.filter(op => {
+    const hasRealPos = allPositions.some((p: any) => p.isOpen && p.trader?.toLowerCase() === op.trader?.toLowerCase());
+    return !hasRealPos && op._txConfirmed && !wipedOutIds.has(op.positionId.toString());
+  });
+
   // Cleanup closing state once the blockchain confirms they are officially closed
   useEffect(() => {
-    if (closingPositionIds.size === 0) return;
+    if (closingIdsRef.current.size === 0) return;
+    // allPositions here includes ALL positions (including closed ones)
+    const allRaw = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : []);
     let changed = false;
-    const next = new Set(closingPositionIds);
+    const next = new Set(closingIdsRef.current);
     for (const id of Array.from(next)) {
-      const pos = allPositions.find((p: any) => p.positionId.toString() === id);
-      // ONLY clear if we found the position and it's officially closed.
-      // If pos is undefined, it might still be loading from blockchain.
+      const pos = allRaw.find((p: any) => p.positionId.toString() === id);
+      // ONLY clear if we found the position and it's officially closed on-chain
       if (pos && !pos.isOpen) {
         next.delete(id);
         changed = true;
-        showToast('success', 'Position Closed', 'Your position has been successfully closed on-chain.');
+        // Kill the ghost optimistic position so it doesn't reappear after the real position vanishes
+        setOptimisticPositions(prev => prev.filter(op => op.trader?.toLowerCase() !== pos.trader.toLowerCase()));
+        showToast('success', 'Position Closed', 'Trade settled successfully onchain.');
       }
     }
-    if (changed) setClosingPositionIds(next);
-  }, [allPositions]); // Only run when allPositions from Wagmi updates
+    if (changed) {
+      closingIdsRef.current = next;
+      setClosingPositionIds(new Set(next));
+    }
+  }, [positionsRaw]); // Run whenever fresh contract data arrives
 
   const updateWipedOutIds = (id: string) => {
     setWipedOutIds(prev => {
@@ -425,10 +527,19 @@ export default function TradePage() {
 
   const [expectedBalance, setExpectedBalance] = useState<number | null>(null);
 
-  // Clear expected balance once the actual blockchain balance reaches or drops below it
+  // Clear expected balance once the actual blockchain balance is close to the expected value.
+  // Uses ±1 USCC tolerance to handle both directions:
+  //   - Open trade: balance DROPS to expected (was balance <= expectedBalance + 0.01)
+  //   - Close profit: balance RISES to expected
   useEffect(() => {
-    if (expectedBalance !== null && balance <= expectedBalance + 0.01) { // 0.01 tolerance for precision
-      setExpectedBalance(null);
+    if (expectedBalance !== null && balance !== undefined) {
+      if (Math.abs(balance - expectedBalance) <= 1.0) {
+        setExpectedBalance(null);
+      } else {
+        // Safety timeout: if blockchain balance takes too long to sync (e.g. RPC lag), stop spinning
+        const t = setTimeout(() => setExpectedBalance(null), 8000);
+        return () => clearTimeout(t);
+      }
     }
   }, [balance, expectedBalance]);
 
@@ -509,7 +620,7 @@ export default function TradePage() {
             console.log('✅ POSITION_CONFIRMED from bot:', msg.tx);
             if (msg.trader?.toLowerCase() === address?.toLowerCase()) {
               // Fetch latest blockchain state BEFORE removing loading spinners
-              Promise.all([refetchBalance(), refetchPositionIds()]).then(() => {
+              Promise.all([refetchBalance(), refetchPositionIds()]).finally(() => {
                 setOptimisticPositions(prev => prev.map(p => 
                   (p.trader?.toLowerCase() === msg.trader?.toLowerCase() && p.isLong === msg.isLong && !p._txConfirmed) 
                     ? { ...p, _txConfirmed: true } 
@@ -542,15 +653,23 @@ export default function TradePage() {
             setOptimisticPositions(prev => prev.filter(p => !p._optimistic));
 
           } else if (msg.type === "CLOSE_CONFIRMED") {
-            // Do not delete from closingPositionIds immediately!
-            // Wait for the blockchain polling to officially mark p.isOpen as false,
-            // which will naturally remove it from openPositions.
-            console.log('✅ CLOSE_CONFIRMED from bot:', msg.tx);
+            console.log('✅ CLOSE_CONFIRMED from bot:', msg.tx, 'pnl:', msg.realizedPnL);
+            // Optimistically update balance if server sends realized PnL
+            if (msg.realizedPnL !== undefined && msg.margin !== undefined) {
+              const returnedUscc = (Number(msg.margin) + Number(msg.realizedPnL)) / 1e6;
+              setExpectedBalance(prev => {
+                const base = prev !== null ? prev : balance;
+                return Math.max(0, base + returnedUscc);
+              });
+            } else {
+              // Fallback: trigger balance refetch
+              refetchBalance();
+            }
             refetchBalance();
             refetchPositionIds();
 
           } else if (msg.type === "CLOSE_FAILED") {
-            setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
+            removeClosingId(msg.positionId?.toString());
             showToast('error', 'Close Position Failed', getTradeErrorMsg(msg.reason));
 
           } else if (msg.type === "HISTORY") {
@@ -654,7 +773,7 @@ export default function TradePage() {
         }
       }
     };
-  }, []);
+  }, [address, refetchBalance, refetchPositionIds]);
 
   const [side, setSide]           = useState<'buy' | 'sell'>('buy')
   const [flashSide, setFlashSide] = useState<string | null>(null)
@@ -761,36 +880,51 @@ export default function TradePage() {
 
       {/* Toast Notification */}
       {toast && (
-        <div
-          onClick={() => setToast(null)}
-          style={{
-            position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)',
-            zIndex: 99999, cursor: 'pointer', maxWidth: 420, width: 'calc(100% - 32px)',
-            background: toast.type === 'error' ? 'rgba(20,8,8,0.97)' : toast.type === 'success' ? 'rgba(4,20,12,0.97)' : 'rgba(18,14,4,0.97)',
-            border: `1px solid ${ toast.type === 'error' ? 'rgba(239,68,68,0.5)' : toast.type === 'success' ? 'rgba(16,185,129,0.5)' : 'rgba(245,158,11,0.5)'}`,
-            borderRadius: 14, padding: '14px 18px', backdropFilter: 'blur(20px)',
-            boxShadow: `0 8px 40px ${ toast.type === 'error' ? 'rgba(239,68,68,0.18)' : toast.type === 'success' ? 'rgba(16,185,129,0.18)' : 'rgba(245,158,11,0.18)'}`,
-            display: 'flex', alignItems: 'flex-start', gap: 12,
-            animation: 'slideDownFadeIn 0.25s cubic-bezier(0.34,1.56,0.64,1)',
-          }}
-        >
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: toast.type === 'error' ? 'rgba(239,68,68,0.15)' : toast.type === 'success' ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-          }}>
-            {toast.type === 'error'
-              ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#ef4444" strokeWidth="1.5"/><path d="M8 4.5v4" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="11" r="0.75" fill="#ef4444"/></svg>
-              : toast.type === 'success'
-              ? <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#10b981" strokeWidth="1.5"/><path d="M5 8l2.5 2.5L11 5.5" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              : <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2L14.5 13.5H1.5L8 2Z" stroke="#f59e0b" strokeWidth="1.5" strokeLinejoin="round"/><path d="M8 6.5v3" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="11.5" r="0.6" fill="#f59e0b"/></svg>
+        <>
+          <style dangerouslySetInnerHTML={{__html: `
+            @keyframes toastSlideUpFade {
+              0% { opacity: 0; transform: translate(-50%, 16px) scale(0.98); }
+              100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
             }
+          `}} />
+          <div
+            onClick={() => setToast(null)}
+            style={{
+              position: 'fixed', top: 32, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 99999, cursor: 'pointer', maxWidth: 400, width: 'calc(100% - 32px)',
+              background: 'rgba(3, 7, 18, 0.4)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '24px', padding: '16px 20px', backdropFilter: 'blur(32px) saturate(150%)',
+              boxShadow: '0 24px 48px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
+              display: 'flex', alignItems: 'center', gap: 16,
+              animation: 'toastSlideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          >
+            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {toast.type === 'error' ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(239,68,68,0.2)" strokeWidth="1.5" />
+                  <path d="M15 9l-6 6M9 9l6 6" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 6px rgba(239,68,68,0.3))' }}/>
+                </svg>
+              ) : toast.type === 'success' ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(16,185,129,0.2)" strokeWidth="1.5" />
+                  <path d="M8.5 12.5l2.5 2.5 5-5" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 6px rgba(16,185,129,0.3))' }}/>
+                </svg>
+              ) : (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(245,158,11,0.2)" strokeWidth="1.5" />
+                  <path d="M12 8v4M12 16h.01" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 6px rgba(245,158,11,0.3))' }}/>
+                </svg>
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, fontSize: 14, color: '#fff', letterSpacing: '-0.01em', marginBottom: 2 }}>{toast.title}</div>
+              <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.4, fontWeight: 400 }}>{toast.message}</div>
+            </div>
+            <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 20, flexShrink: 0, lineHeight: 1, transition: 'color 0.2s', padding: '0 4px' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = 'rgba(255,255,255,0.2)'}>×</div>
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: toast.type === 'error' ? '#ef4444' : toast.type === 'success' ? '#10b981' : '#f59e0b', marginBottom: 4 }}>{toast.title}</div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', lineHeight: 1.5 }}>{toast.message}</div>
-          </div>
-          <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 16, flexShrink: 0, lineHeight: 1 }}>×</div>
-        </div>
+        </>
       )}
 
       {/* Main area */}
@@ -810,11 +944,11 @@ export default function TradePage() {
 
 
             {/* Balance */}
-            {address && (
+            {mounted && address && (
               <div className={styles.tbBal}>
                 <span className={styles.tbBalLabel}>USCC</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {displayBalance.toFixed(2)}
+                  <Counter value={displayBalance} decimals={2} />
                   {isBalanceSyncing && <Loader2 size={12} className="animate-spin text-emerald-400" />}
                 </span>
               </div>
@@ -824,7 +958,7 @@ export default function TradePage() {
               <Wallet size={15} />
             </button>
 
-            <ConnectButton />
+            <ConnectButton onConnectClick={() => setShowConnect(true)} />
           </div>
         </header>
 
@@ -845,7 +979,7 @@ export default function TradePage() {
                   </div>
                   <div className={styles.coinRight}>
                     {m.comingSoon ? (
-                      <div className="text-[9px] font-bold text-white/40 uppercase tracking-wider bg-white/5 px-2 py-1 rounded-md border border-white/[0.03]">Coming Soon</div>
+                      <div className="text-[9px] font-bold text-white/40 uppercase tracking-wider whitespace-nowrap bg-white/5 px-2 py-1 rounded-md border border-white/[0.03]">Coming Soon</div>
                     ) : (
                       <>
                         <div className={styles.coinPrice}>{m.p}</div>
@@ -878,7 +1012,7 @@ export default function TradePage() {
               <div className={styles.chartStats}>
                 <div className={styles.chartStat}>
                   <span className={styles.chartStatVal} style={{ color: 'rgba(255,255,255,0.8)' }}>60s</span>
-                  <span className={styles.chartStatLbl}>Round Duration</span>
+                  <span className={styles.chartStatLbl}>Epoch Duration</span>
                 </div>
 
 
@@ -902,39 +1036,44 @@ export default function TradePage() {
                 </div>
               ) : (
                 <>
-                  <TradingChart data={candles} isCandle={isCandle} positions={[...chartPositions, ...optimisticPositions.filter(p => !wipedOutIds.has(p.positionId.toString()) && p._txConfirmed)]} showLines={roundStatus === "Active"} />
+                  <TradingChart data={candles} isCandle={isCandle} positions={[...chartPositions, ...visibleOptimisticPositions]} showLines={roundStatus === "Active"} />
                   
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
-                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#030712]/40 backdrop-blur-[2px] transition-all duration-500 animate-[fadeIn_0.3s_ease-out]">
-                      <div className="flex flex-col items-center gap-5 p-8 rounded-3xl bg-white/[0.03] border border-white/[0.08] shadow-2xl backdrop-blur-xl scale-100 animate-[zoomIn_0.3s_ease-out]">
-                        <div className="relative">
-                          <Loader2 size={32} className="text-emerald-400 animate-spin" />
-                          <div className="absolute inset-0 blur-lg bg-emerald-400/20 animate-pulse" />
+                    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[12px] transition-all duration-500 animate-[fadeIn_0.3s_ease-out]">
+                      <div style={{
+                        background: 'rgba(3, 7, 18, 0.4)', backdropFilter: 'blur(32px) saturate(150%)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        padding: '36px 56px', borderRadius: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24,
+                        boxShadow: '0 24px 48px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
+                        animation: 'zoomIn 0.2s cubic-bezier(0.34,1.56,0.64,1)'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="animate-spin" style={{ animationDuration: '1.5s' }}>
+                            <circle cx="12" cy="12" r="10" stroke="rgba(16,185,129,0.15)" strokeWidth="2" />
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="#10b981" strokeWidth="2" strokeLinecap="round" style={{ filter: 'drop-shadow(0 0 6px rgba(16,185,129,0.4))' }} />
+                          </svg>
                         </div>
-                        <div className="flex flex-col items-center gap-1.5">
-                          <div className="text-sm font-bold text-white uppercase tracking-[0.2em] drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">{roundStatus}</div>
-                          <div className="text-[10px] text-white/40 font-medium uppercase tracking-[0.3em]">Syncing with chain</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                          <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 14, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.15em' }}>{roundStatus}</div>
+                          <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.2em' }}>Syncing with chain</div>
                         </div>
                         {settlingCountdown > 0 && (
-                          <div className="flex flex-col items-center gap-1">
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 4 }}>
                             <div style={{
-                              fontFamily: 'var(--mono)',
-                              fontSize: 36,
-                              fontWeight: 900,
-                              color: settlingCountdown <= 5 ? '#10b981' : 'rgba(255,255,255,0.9)',
-                              lineHeight: 1,
-                              letterSpacing: '-0.04em',
-                              textShadow: settlingCountdown <= 5 ? '0 0 20px rgba(16,185,129,0.6)' : '0 0 20px rgba(255,255,255,0.2)',
-                              transition: 'color 0.5s ease, text-shadow 0.5s ease',
+                              fontFamily: 'var(--mono)', fontSize: 44, fontWeight: 700,
+                              color: settlingCountdown <= 5 ? '#10b981' : '#fff',
+                              lineHeight: 1, letterSpacing: '-0.02em',
+                              textShadow: settlingCountdown <= 5 ? '0 0 24px rgba(16,185,129,0.3)' : 'none',
+                              transition: 'all 0.4s ease',
                             }}>
                               {settlingCountdown}s
                             </div>
-                            <div className="text-[9px] text-white/30 uppercase tracking-[0.3em]">est. next round</div>
+                            <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.15em' }}>est. next round</div>
                           </div>
                         )}
                         {settlingCountdown === 0 && (
-                          <div className="text-[10px] text-emerald-400/80 uppercase tracking-[0.2em] animate-pulse">Starting soon...</div>
+                          <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 11, fontWeight: 600, color: 'rgba(16,185,129,0.8)', textTransform: 'uppercase', letterSpacing: '0.15em', marginTop: 4 }} className="animate-pulse">Starting soon...</div>
                         )}
                       </div>
                     </div>
@@ -978,6 +1117,47 @@ export default function TradePage() {
                 transform: scale(0.95) !important;
               }
             `}</style>
+            {/* Round Countdown — at the top for quick entry awareness */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span className="text-xs font-medium text-white/50">Epoch Closes In</span>
+                {roundStatus !== "Active" ? (
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 uppercase animate-pulse">
+                    <Loader2 size={12} className="animate-spin" />
+                    {roundStatus}
+                  </span>
+                ) : (
+                  <span style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: countdown <= 10 ? '#ff3b30' : '#00e676',
+                    textShadow: countdown <= 10 ? '0 0 12px rgba(255,59,48,0.4)' : 'none'
+                  }}>
+                    {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}
+                  </span>
+                )}
+              </div>
+              <div style={{ width: '100%', height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${(countdown / 60) * 100}%`,
+                  borderRadius: 99,
+                  background: countdown <= 10
+                    ? 'linear-gradient(to right, #ef4444, #f97316)'
+                    : countdown <= 20
+                      ? 'linear-gradient(to right, #f59e0b, #eab308)'
+                      : 'linear-gradient(to right, #10b981, #3b82f6)',
+                  transition: 'width 1s linear, background 0.5s ease',
+                  boxShadow: countdown <= 10
+                    ? '0 0 8px rgba(239,68,68,0.6)'
+                    : countdown <= 20
+                      ? '0 0 8px rgba(245,158,11,0.5)'
+                      : '0 0 8px rgba(16,185,129,0.4)',
+                }} />
+              </div>
+            </div>
+
+            {/* Long / Short Tabs */}
             <div style={{ display: 'flex', marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               {(['Long', 'Short'] as const).map((t, i) => {
                 const val    = i === 0 ? 'buy' : 'sell';
@@ -1081,73 +1261,8 @@ export default function TradePage() {
               )}
             </div>
 
-            <div className={styles.divider} style={{ margin: '0 0 24px', opacity: 0.3 }} />
-
-            <div className="flex flex-col gap-4 mb-9">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Order Value</span>
-                <span className="text-base font-semibold text-white/90">{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Opening Fee (0.01%)</span>
-                <span className="text-base font-semibold text-white/70">{openFee.toFixed(2)} USCC</span>
-              </div>
-              <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">
-                <span className="text-xs font-bold text-white/60">Total Required</span>
-                <span className={`text-base font-bold ${isExceedsBalance ? 'text-rose-500' : 'text-white'}`}>{totalRequired.toFixed(2)} USCC</span>
-              </div>
-              <div className={styles.divider} style={{ margin: '8px 0', opacity: 0.2 }} />
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Est. Liq Price</span>
-                <span className="text-base font-semibold text-white/90">{estLiq.toFixed(5)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Slippage</span>
-                <span className="text-base font-semibold text-emerald-400">0.00%</span>
-              </div>
-            </div>
-
-            {/* Round Countdown */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span className="text-xs font-medium text-white/50">Round Closes In</span>
-                {roundStatus !== "Active" ? (
-                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 uppercase animate-pulse">
-                    <Loader2 size={12} className="animate-spin" />
-                    {roundStatus}
-                  </span>
-                ) : (
-                  <span style={{
-                    fontSize: 14,
-                    fontWeight: 700,
-                    color: countdown <= 10 ? '#ff3b30' : '#00e676',
-                    textShadow: countdown <= 10 ? '0 0 12px rgba(255,59,48,0.4)' : 'none'
-                  }}>
-                    {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}
-                  </span>
-                )}
-              </div>
-              <div style={{ width: '100%', height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 99, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${(countdown / 60) * 100}%`,
-                  borderRadius: 99,
-                  background: countdown <= 10
-                    ? 'linear-gradient(to right, #ef4444, #f97316)'
-                    : countdown <= 20
-                      ? 'linear-gradient(to right, #f59e0b, #eab308)'
-                      : 'linear-gradient(to right, #10b981, #3b82f6)',
-                  transition: 'width 1s linear, background 0.5s ease',
-                  boxShadow: countdown <= 10
-                    ? '0 0 8px rgba(239,68,68,0.6)'
-                    : countdown <= 20
-                      ? '0 0 8px rgba(245,158,11,0.5)'
-                      : '0 0 8px rgba(16,185,129,0.4)',
-                }} />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 'auto' }}>
+            {/* Action Button — right after leverage for quick entry */}
+            <div style={{ marginBottom: 20 }}>
               <button 
                 disabled={address ? (isOrderDisabled || isTxPending || countdown <= 7) : false}
                 className={`w-full py-4 rounded-xl text-[15px] font-bold tracking-wide transition-all flex items-center justify-center gap-2 active:scale-[0.98] active:brightness-90 ${
@@ -1252,10 +1367,38 @@ export default function TradePage() {
                 ) : (
                   `OPEN ${side === 'buy' ? 'LONG' : 'SHORT'}`
                 )}
-                {(!isOrderDisabled && !!address && countdown > 7) && !isTxPending && <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />}
+                {(!isOrderDisabled && !!address && countdown > 7) && !isTxPending && (
+                  side === 'buy' ? <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" /> : <ArrowDownRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />
+                )}
               </button>
             </div>
-          </div>
+
+            <div className={styles.divider} style={{ margin: '0 0 24px', opacity: 0.3 }} />
+
+            <div className="flex flex-col gap-4 mb-9">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-white/50">Order Value</span>
+                <span className="text-base font-semibold text-white/90">{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-white/50">Opening Fee (0.01%)</span>
+                <span className="text-base font-semibold text-white/70">{openFee.toFixed(2)} USCC</span>
+              </div>
+              <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">
+                <span className="text-xs font-bold text-white/60">Total Required</span>
+                <span className={`text-base font-bold ${isExceedsBalance ? 'text-rose-500' : 'text-white'}`}>{totalRequired.toFixed(2)} USCC</span>
+              </div>
+              <div className={styles.divider} style={{ margin: '8px 0', opacity: 0.2 }} />
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-white/50">Est. Liq Price</span>
+                <span className="text-base font-semibold text-white/90">{estLiq.toFixed(5)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-medium text-white/50">Slippage</span>
+                <span className="text-base font-semibold text-emerald-400">0.00%</span>
+              </div>
+            </div>{/* end details flex */}
+          </div>{/* end order card */}
 
           <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.runCard}`}>
             <div className={styles.cardTitle}>Summary</div>
@@ -1272,7 +1415,7 @@ export default function TradePage() {
                       <tr>
                         <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Balance</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
-                          <span style={{ color: '#fff' }}>{displayBalance.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
+                          <Counter value={displayBalance} decimals={2} style={{ color: '#fff' }} /> <span style={{ fontWeight: 500 }}>USCC</span>
                         </td>
                       </tr>
                       <tr>
@@ -1326,19 +1469,14 @@ export default function TradePage() {
                 <div className="w-full h-full">
                   <EmptyState icon={Wallet} title="Round Settling" desc="Positions are being settled. Next round starting soon." />
                 </div>
-              ) : (openPositions.length > 0 || optimisticPositions.length > 0) ? (
+              ) : (visibleOpenPositions.length > 0 || visibleOptimisticPositions.length > 0) ? (
                 <table className={styles.tbl}>
                   <thead>
                     <tr><th>Side/Entry</th><th>Margin</th><th>PNL</th><th style={{ textAlign: 'right' }}>Action</th></tr>
                   </thead>
                   <tbody>
                     {(() => {
-                      // Filter optimistic: hapus jika real position sudah masuk dari chain
-                      const realTraders = new Set(openPositions.map((p: any) => p.trader?.toLowerCase()));
-                      const filteredOptimistic = optimisticPositions.filter(
-                        op => !realTraders.has(op.trader?.toLowerCase()) && op._txConfirmed
-                      );
-                      return [...openPositions, ...filteredOptimistic].map((p: any) => {
+                      return [...visibleOpenPositions, ...visibleOptimisticPositions].map((p: any) => {
                         const pnlIdx = ids.findIndex(id => id === p.positionId);
                         const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
                         const posId  = p.positionId.toString();
@@ -1397,13 +1535,7 @@ export default function TradePage() {
                                   disabled={!!p._optimistic}
                                   onClick={() => {
                                     if (p._optimistic) return;
-                                    setClosingPositionIds(prev => new Set([...prev, posId]));
-                                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                                      wsRef.current.send(JSON.stringify({ type: 'CLOSE_POSITION', positionId: posId, price: Math.floor(cur * 1e5) }));
-                                    } else {
-                                      showToast('error', 'Connection Lost', 'Not connected to trading server. Please refresh the page.');
-                                      setClosingPositionIds(prev => { const n = new Set(prev); n.delete(posId); return n; });
-                                    }
+                                    setCloseConfirmPos(p);
                                   }}
                                 >{p._optimistic ? '...' : 'Close'}</button>
                               )}
@@ -1479,43 +1611,153 @@ export default function TradePage() {
         </div>
       </div>
 
+      {/* Close Position Confirmation Popup */}
+      {closeConfirmPos && (() => {
+        const p = closeConfirmPos;
+        const posId = p.positionId.toString();
+        const entry = Number(p.entryPrice) / 1e5;
+        const margin = Number(p.margin) / 1e6;
+        const lev = Number(p.leverage);
+        const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
+        const livePnl = entry > 0 ? (priceDiff / entry) * (margin * lev) : 0;
+        const displayPnl = Math.max(livePnl, -margin);
+        const isPnlPos = displayPnl >= 0;
+        return (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 99998,
+            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(24px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            animation: 'iosFadeIn 0.3s ease-out forwards'
+          }} onClick={() => setCloseConfirmPos(null)}>
+            <div style={{
+              background: 'rgba(3, 7, 18, 0.4)', backdropFilter: 'blur(32px) saturate(150%)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              padding: 28, borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 20,
+              width: 360, boxShadow: '0 24px 48px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
+              boxSizing: 'border-box',
+              animation: 'iosPop 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+            }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="rgba(239,68,68,0.2)" strokeWidth="1.5" />
+                    <path d="M12 8v4M12 16h.01" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 6px rgba(239,68,68,0.3))' }}/>
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, fontSize: 16, color: '#fff', letterSpacing: '-0.02em', marginBottom: 2 }}>Close Position?</div>
+                  <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>This action cannot be undone</div>
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 16, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Side</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: p.isLong ? '#10b981' : '#ef4444' }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Entry Price</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', fontFamily: 'var(--mono)' }}>{entry.toFixed(5)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Current Price</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', fontFamily: 'var(--mono)' }}>{cur.toFixed(5)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: 12, marginTop: 4 }}>
+                  <span style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>Est. PnL</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--mono)', color: isPnlPos ? '#10b981' : '#ef4444' }}>
+                    {isPnlPos ? '+' : ''}{displayPnl.toFixed(2)} USCC
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)', borderRadius: 12, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, cursor: 'pointer', fontSize: 13, transition: 'all 0.15s' }}
+                  onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = 'rgba(255,255,255,0.9)'; }}
+                  onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; }}
+                  onClick={() => setCloseConfirmPos(null)}
+                >Cancel</button>
+                <button
+                  style={{ flex: 1, padding: '14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#ef4444', borderRadius: 12, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, cursor: 'pointer', fontSize: 13, transition: 'all 0.15s' }}
+                  onMouseOver={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.3)'; }}
+                  onMouseOut={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'; }}
+                  onClick={() => {
+                    setCloseConfirmPos(null);
+                    // Mark as closing (but leave visible until blockchain confirms)
+                    addClosingId(posId);
+                    // Optimistic balance update: add back margin + estimated profit
+                    const estReturn = margin + displayPnl;
+                    if (estReturn > 0) {
+                      setExpectedBalance(prev => {
+                        const base = prev !== null ? prev : balance;
+                        return Math.max(0, base + estReturn);
+                      });
+                    }
+                    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                      wsRef.current.send(JSON.stringify({ type: 'CLOSE_POSITION', positionId: posId, price: Math.floor(cur * 1e5) }));
+                    } else {
+                      showToast('error', 'Connection Lost', 'Not connected to trading server. Please refresh the page.');
+                      removeClosingId(posId); // rollback
+                      setExpectedBalance(null);
+                    }
+                  }}
+                >Confirm Close</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {showWalletMenu && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
+          background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(24px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'iosFadeIn 0.3s ease-out forwards'
         }} onClick={() => setShowWalletMenu(false)}>
           <div style={{
-            background: 'var(--panel)', border: '1px solid var(--border)',
-            padding: 24, borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 12,
-            width: 320, boxShadow: '0 20px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)',
-            boxSizing: 'border-box'
+            background: 'rgba(3, 7, 18, 0.4)', backdropFilter: 'blur(32px) saturate(150%)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            padding: 28, borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 20,
+            width: 360, boxShadow: '0 24px 48px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
+            boxSizing: 'border-box',
+            animation: 'iosPop 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards'
           }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: 18, fontFamily: 'Space Grotesk, sans-serif', color: '#fff' }}>Portfolio Action</h3>
-            <button 
-              style={{ padding: '14px', background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.3)', color: '#3b82f6', borderRadius: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: 14 }}
-              onMouseOver={e => { e.currentTarget.style.background = 'rgba(37,99,235,0.2)'; e.currentTarget.style.borderColor = 'rgba(37,99,235,0.5)' }}
-              onMouseOut={e => { e.currentTarget.style.background = 'rgba(37,99,235,0.1)'; e.currentTarget.style.borderColor = 'rgba(37,99,235,0.3)' }}
-              onClick={() => { setShowDeposit(true); setShowWalletMenu(false); }}
-            >
-              Deposit Funds
-            </button>
-            <button 
-              style={{ padding: '14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s', fontSize: 14 }}
-              onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)' }}
-              onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)' }}
-              onClick={() => { setShowWithdraw(true); setShowWalletMenu(false); }}
-            >
-              Withdraw Funds
-            </button>
-            <button 
-              style={{ padding: '10px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', borderRadius: 12, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', fontSize: 13, marginTop: 4 }}
-              onMouseOver={e => e.currentTarget.style.color = '#fff'}
-              onMouseOut={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="rgba(59,130,246,0.2)" strokeWidth="1.5" />
+                  <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h7m9-3-3 3m0 0-3-3m3 3V11" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'drop-shadow(0 0 6px rgba(59,130,246,0.3))' }}/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, fontSize: 16, color: '#fff', letterSpacing: '-0.02em', marginBottom: 2 }}>Portfolio Action</div>
+                <div style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 13, color: 'rgba(255,255,255,0.45)' }}>Manage your funds securely</div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <button
+                style={{ width: '100%', padding: '14px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', color: '#3b82f6', borderRadius: 12, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, cursor: 'pointer', fontSize: 13, transition: 'all 0.15s' }}
+                onMouseOver={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.15)'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.3)'; }}
+                onMouseOut={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.08)'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.2)'; }}
+                onClick={() => { setShowDeposit(true); setShowWalletMenu(false); }}
+              >Deposit Funds</button>
+              <button
+                style={{ width: '100%', padding: '14px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.9)', borderRadius: 12, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, cursor: 'pointer', fontSize: 13, transition: 'all 0.15s' }}
+                onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}
+                onClick={() => { setShowWithdraw(true); setShowWalletMenu(false); }}
+              >Withdraw Funds</button>
+            </div>
+            
+            <button
+              style={{ padding: '14px', background: 'transparent', border: '1px solid transparent', color: 'rgba(255,255,255,0.5)', borderRadius: 12, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, cursor: 'pointer', fontSize: 13, transition: 'all 0.15s', marginTop: -4 }}
+              onMouseOver={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'; }}
+              onMouseOut={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
               onClick={() => setShowWalletMenu(false)}
-            >
-              Cancel
-            </button>
+            >Cancel</button>
           </div>
         </div>
       )}

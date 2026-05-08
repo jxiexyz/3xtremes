@@ -1,6 +1,6 @@
 import { createConfig, http } from 'wagmi'
 import { defineChain } from 'viem'
-import { injected } from 'wagmi/connectors'
+import { injected, coinbaseWallet } from 'wagmi/connectors'
 
 export const arcTestnet = defineChain({
   id: 5042002,
@@ -23,7 +23,11 @@ export const arcTestnet = defineChain({
 
 export const config = createConfig({
   chains: [arcTestnet],
-  connectors: [injected()],
+  connectors: [
+    // injected() with no args auto-discovers all EIP-6963 wallets (MetaMask, Rabby, Phantom, etc.)
+    injected(),
+    coinbaseWallet({ appName: '3xtremes', appLogoUrl: 'https://3xtremes.app/logo.png' }),
+  ],
   transports: {
     [arcTestnet.id]: http(),
   },

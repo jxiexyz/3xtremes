@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useAccount, useConnect, useDisconnect } from 'wagmi'
-import { injected } from 'wagmi/connectors'
+import { useAccount, useDisconnect } from 'wagmi'
 import { LogOut, Copy, Check } from 'lucide-react'
 
-export default function ConnectButton() {
+export default function ConnectButton({ onConnectClick }: { onConnectClick?: () => void }) {
   const { address, isConnected } = useAccount()
-  const { connect } = useConnect()
   const { disconnect } = useDisconnect()
   const [showMenu, setShowMenu] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -78,7 +76,7 @@ export default function ConnectButton() {
 
   return (
     <button
-      onClick={() => connect({ connector: injected() })}
+      onClick={() => onConnectClick ? onConnectClick() : null}
       style={{ padding:'6px 16px', background:'#2563eb', color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:12, cursor:'pointer', fontFamily:'Inter Tight,Inter,sans-serif', boxShadow:'0 0 16px rgba(37,99,235,0.4)', transition:'all 0.2s' }}
       onMouseOver={e => (e.currentTarget.style.background = '#3b82f6')}
       onMouseOut={e => (e.currentTarget.style.background = '#2563eb')}
