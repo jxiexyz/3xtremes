@@ -392,9 +392,10 @@ export default function TradePage() {
   }, []);
 
   const allPositions = ((positionsRaw as any) ?? []).flatMap((r: any) => r.status === 'success' && r.result ? [r.result as any] : [])
-  // Chart uses a filtered version, but we keep them in openPositions for the UI table
-  const openPositions = allPositions.filter((p: any) => p.isOpen && !closingPositionIds.has(p.positionId.toString()))
-  const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()))
+  // Table uses openPositions (including those currently closing, so it can show the "CLOSING..." button)
+  const openPositions = allPositions.filter((p: any) => p.isOpen)
+  // Chart instantly hides positions that are wiped out or currently closing
+  const chartPositions = openPositions.filter((p: any) => !wipedOutIds.has(p.positionId.toString()) && !closingPositionIds.has(p.positionId.toString()))
   const closedPositions = allPositions.filter((p: any) => !p.isOpen).sort((a: any, b: any) => Number(b.closeTimestamp) - Number(a.closeTimestamp))
 
   const updateWipedOutIds = (id: string) => {
@@ -524,7 +525,11 @@ export default function TradePage() {
             setOptimisticPositions(prev => prev.filter(p => !p._optimistic));
 
           } else if (msg.type === "CLOSE_CONFIRMED") {
-            setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
+            // Do not delete from closingPositionIds immediately!
+            // Wait for the blockchain polling to officially mark p.isOpen as false,
+            // which will naturally remove it from openPositions.
+            console.log('✅ CLOSE_CONFIRMED from bot:', msg.tx);
+            showToast('success', 'Position Closing', 'Transaction submitted to blockchain.');
 
           } else if (msg.type === "CLOSE_FAILED") {
             setClosingPositionIds(prev => { const n = new Set(prev); n.delete(msg.positionId); return n; });
@@ -1378,7 +1383,7 @@ export default function TradePage() {
                                     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
                                       wsRef.current.send(JSON.stringify({ type: 'CLOSE_POSITION', positionId: posId, price: Math.floor(cur * 1e5) }));
                                     } else {
-                                      alert('Not connected to trading server.');
+                                      showToast('error', 'Connection Lost', 'Not connected to trading server. Please refresh the page.');
                                       setClosingPositionIds(prev => { const n = new Set(prev); n.delete(posId); return n; });
                                     }
                                   }}
