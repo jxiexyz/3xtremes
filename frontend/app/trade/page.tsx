@@ -591,8 +591,17 @@ export default function TradePage() {
 
     return () => {
       destroyed = true;
-      if (wsRef.current) wsRef.current.close();
       clearTimeout(reconnectTimeout);
+      const ws = wsRef.current;
+      if (ws) {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          // Can't close mid-handshake without browser warning.
+          // Override onopen so it closes immediately once it connects.
+          ws.onopen = () => ws.close();
+        } else {
+          ws.close();
+        }
+      }
     };
   }, []);
 
