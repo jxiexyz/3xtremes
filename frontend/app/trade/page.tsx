@@ -1342,9 +1342,14 @@ export default function TradePage() {
                               </div>
                             </td>
                             <td style={{ color: isFinalPnlPositive ? '#10b981' : '#ef4444', verticalAlign: 'middle' }}>
-                              <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
-                                {isFinalPnlPositive ? '+' : ''}{finalPnlPct.toFixed(2)}%
-                              </span>
+                              <div className="flex flex-col">
+                                <span style={{ fontWeight: 700, fontSize: 12, fontFamily: 'var(--mono)' }}>
+                                  {isFinalPnlPositive ? '+' : ''}{finalPnlPct.toFixed(2)}%
+                                </span>
+                                <span style={{ fontSize: 10, color: isFinalPnlPositive ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)', fontWeight: 500, fontFamily: 'var(--mono)' }}>
+                                  {isFinalPnlPositive ? '+$' : '-$'}{Math.abs(finalDisplayPnl).toFixed(2)}
+                                </span>
+                              </div>
                             </td>
                             <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
                               {isLiquidated ? (
