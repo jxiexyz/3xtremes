@@ -515,17 +515,23 @@ async function handleOptimisticRoundEnd(roundId: number, finalPrice: number) {
   // 1. Immediately tell frontend the round is settling (clears positions/lines)
   broadcast({ type: "ROUND_SETTLING", roundId, finalPrice });
 
-  // 2. Stream placeholder candles (flat line at finalPrice) so UI isn't frozen
-  //    These are purely cosmetic — no positions can be opened during this phase
-  const placeholderCandles = Array.from({ length: 60 }, (_, i) => ({
-    second: i,
-    open: finalPrice,
-    high: finalPrice,
-    low: finalPrice,
-    close: finalPrice,
-  }));
-  // Don't stream placeholder — just leave the last candle frozen and show overlay
-  // Frontend already shows "Settling..." overlay from ROUND_SETTLING
+  // 2. Wait for any in-flight liquidations to complete BEFORE settling on-chain.
+  //    This prevents settleRound from closing a position that should be liquidated,
+  //    which would incorrectly return margin to the user instead of sending it to insurance.
+  if (liquidating.size > 0) {
+    log(`⏳ Waiting for ${liquidating.size} pending liquidation(s) before settle...`);
+    let waited = 0;
+    while (liquidating.size > 0 && waited < 15000) {
+      await new Promise(r => setTimeout(r, 500));
+      waited += 500;
+    }
+    if (liquidating.size > 0) {
+      log(`⚠️ ${liquidating.size} liquidation(s) still pending after 15s — proceeding anyway`);
+      liquidating.clear(); // Clear to avoid blocking settlement forever
+    } else {
+      log(`✅ All liquidations confirmed — proceeding to settle`);
+    }
+  }
 
   // 3. Perform on-chain settlement — WAIT for it to succeed before starting next round
   log(`⚡ Starting background settlement for round #${roundId}...`);
