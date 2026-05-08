@@ -698,7 +698,6 @@ async function doLiquidate(id: string, pos: any) {
   if (liquidating.has(id)) return;
   liquidating.add(id);
 
-  // Optimistic: immediately broadcast liquidation to frontend so UI locks the position
   broadcast({
     type: "POSITION_LIQUIDATED",
     positionId: id,
@@ -706,31 +705,37 @@ async function doLiquidate(id: string, pos: any) {
     liquidationPrice: pos.liquidationPrice.toString(),
   });
 
-  try {
-    log(`🔥 Liquidating #${id} | executionPrice=${formatPrice(pos.liquidationPrice)}`);
+  log(`🔥 Liquidating #${id} | executionPrice=${formatPrice(pos.liquidationPrice)}`);
 
-    // ── Hybrid DEX: single tx using backendLiquidatePosition ─────────────────
-    // Passes the exact wick price that triggered liquidation as executionPrice.
-    // No need for a separate updatePrice tx anymore.
-    const hash = await walletClient.writeContract({
-      address: POSITION_MANAGER_ADDRESS,
-      abi: POSITION_MANAGER_ABI,
-      functionName: "backendLiquidatePosition",
-      args: [pos.positionId, pos.liquidationPrice],
-    });
+  let attempts = 0;
+  while (attempts < 3) {
+    try {
+      const hash = await walletClient.writeContract({
+        address: POSITION_MANAGER_ADDRESS,
+        abi: POSITION_MANAGER_ABI,
+        functionName: "backendLiquidatePosition",
+        args: [pos.positionId, pos.liquidationPrice],
+        gas: 3000000n, // bypass simulation
+      });
 
-    log(`📤 backendLiquidate tx: ${hash}`);
-    await publicClient.waitForTransactionReceipt({ hash });
+      log(`📤 backendLiquidate tx: ${hash}`);
+      await publicClient.waitForTransactionReceipt({ hash });
 
-    openPositions.delete(id);
-    liquidating.delete(id);
-    log(`✅ #${id} liquidated on-chain!`);
-    broadcast({ type: "LIQUIDATION_CONFIRMED", positionId: id, tx: hash });
-  } catch (err: any) {
-    log(`❌ backendLiquidate(#${id}) error: ${err.shortMessage || err.message}`);
-    liquidating.delete(id);
-    broadcast({ type: "LIQUIDATION_FAILED", positionId: id, reason: err?.shortMessage || err?.message });
+      openPositions.delete(id);
+      liquidating.delete(id);
+      log(`✅ #${id} liquidated on-chain!`);
+      broadcast({ type: "LIQUIDATION_CONFIRMED", positionId: id, tx: hash });
+      return;
+    } catch (err: any) {
+      attempts++;
+      log(`❌ backendLiquidate(#${id}) attempt ${attempts}/3 error: ${err.shortMessage || err.message}`);
+      if (attempts < 3) await new Promise(r => setTimeout(r, 2000));
+    }
   }
+
+  // If we reach here, all 3 attempts failed
+  liquidating.delete(id);
+  broadcast({ type: "LIQUIDATION_FAILED", positionId: id, reason: "max_retries_exceeded" });
 }
 
 function stopLoop() {
