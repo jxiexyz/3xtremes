@@ -193,10 +193,6 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
       try { chartRef.current.removeSeries(seriesRef.current); } catch (e) {}
     }
 
-    const validData = data
-      .filter(d => d && typeof d.time === 'number' && !isNaN(d.time))
-      .filter((v, i, a) => i === 0 || v.time > a[i - 1].time);
-
     let series;
     if (isCandle) {
       series = chartRef.current.addSeries(CandlestickSeries, {
@@ -216,7 +212,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
     if (data.length > 0) {
       const seen = new Set<number>();
       const validData = data
-        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time))
+        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time) && !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
         .sort((a, b) => a.time - b.time)
         .filter(d => {
           if (seen.has(d.time)) return false;
@@ -239,7 +235,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
     if (seriesRef.current && data.length > 0) {
       const seen = new Set<number>();
       const validData = data
-        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time))
+        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time) && !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
         .sort((a, b) => a.time - b.time)
         .filter(d => {
           if (seen.has(d.time)) return false;
