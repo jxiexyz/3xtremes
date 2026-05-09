@@ -611,7 +611,7 @@ async function backendOpen(
       log(`📤 backendOpen tx: ${hash}`);
 
       // ✅ Konfirmasi LANGSUNG ke frontend setelah hash — tidak tunggu mining
-      broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash });
+      broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash, margin: margin.toString(), leverage: leverage.toString() });
 
       // Receipt verification jalan di background (catch revert jika ada)
       publicClient.waitForTransactionReceipt({ hash }).then((receipt) => {

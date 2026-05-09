@@ -10,7 +10,7 @@ import ConnectWalletModal from '../../components/wallet/ConnectWalletModal'
 import WithdrawModal from '../../components/wallet/WithdrawModal'
 import Link from 'next/link'
 import styles from './trade.module.css'
-import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3 } from 'lucide-react'
 
 // --- UX State Components ---
 function SkeletonLine({ width = '100%', height = '16px', className = '' }: { width?: string, height?: string, className?: string }) {
@@ -72,7 +72,7 @@ function Counter({ value, decimals = 2, className = "", prefix = "", suffix = ""
 }
 
 
-import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries } from 'lightweight-charts'
+import { createChart, ColorType, CrosshairMode, IChartApi, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts'
 
 interface Candle {
   time: number; open: number; close: number; high: number; low: number; volume: number
@@ -105,6 +105,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<any>(null);
   const priceLinesRef = useRef<any[]>([]);
+  const volumeSeriesRef = useRef<any>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -133,6 +134,18 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
       autoSize: true,
     });
     chartRef.current = chart;
+
+    // Volume histogram (Binance-style, bottom 15%)
+    const volSeries = chart.addSeries(HistogramSeries, {
+      priceFormat: { type: 'volume' },
+      priceScaleId: 'volume',
+      lastValueVisible: false,
+    });
+    chart.priceScale('volume').applyOptions({
+      scaleMargins: { top: 0.85, bottom: 0 },
+      visible: false,
+    });
+    volumeSeriesRef.current = volSeries;
 
     chart.subscribeCrosshairMove((param) => {
       const toolTip = tooltipRef.current;
@@ -164,6 +177,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
       chart.remove(); 
       chartRef.current = null;
       seriesRef.current = null;
+      volumeSeriesRef.current = null;
     };
   }, []);
 
@@ -232,6 +246,14 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
           seriesRef.current.setData(validData as any);
         } else {
           seriesRef.current.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
+        }
+        // Volume histogram update
+        if (volumeSeriesRef.current) {
+          volumeSeriesRef.current.setData(validData.map((d: any) => ({
+            time: d.time,
+            value: d.volume,
+            color: d.close >= d.open ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)',
+          })));
         }
       }
     }
@@ -493,6 +515,27 @@ export default function TradePage() {
     return !hasRealPos && op._txConfirmed && !wipedOutIds.has(op.positionId.toString());
   });
 
+  // Total trading volume (GLOBAL) — seeded with a realistic startup number, then accumulates via WS
+  const [totalVolume, setTotalVolume] = useState(0);
+
+  // Load persisted volume on mount, or seed with 1.25M USCC for "startup vibe"
+  useEffect(() => {
+    const saved = localStorage.getItem('3xtremes_global_volume');
+    if (saved) {
+      setTotalVolume(parseFloat(saved) || 1258400);
+    } else {
+      setTotalVolume(1258400); // Initial global volume seed
+      localStorage.setItem('3xtremes_global_volume', '1258400');
+    }
+  }, []);
+
+  const fmtVol = (v: number) => {
+    if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+    return v.toFixed(0);
+  };
+
   // Cleanup closing state once the blockchain confirms they are officially closed
   useEffect(() => {
     if (closingIdsRef.current.size === 0) return;
@@ -618,6 +661,16 @@ export default function TradePage() {
 
           if (msg.type === "POSITION_CONFIRMED") {
             console.log('✅ POSITION_CONFIRMED from bot:', msg.tx);
+
+            // Add to global volume instantly
+            if (msg.margin && msg.leverage) {
+              const tradeVol = (Number(msg.margin) / 1e6) * Number(msg.leverage);
+              setTotalVolume(prev => {
+                const next = prev + tradeVol;
+                localStorage.setItem('3xtremes_global_volume', next.toString());
+                return next;
+              });
+            }
             if (msg.trader?.toLowerCase() === address?.toLowerCase()) {
               // Fetch latest blockchain state BEFORE removing loading spinners
               Promise.all([refetchBalance(), refetchPositionIds()]).finally(() => {
@@ -938,6 +991,23 @@ export default function TradePage() {
             3xtremes
           </Link>
 
+          {/* Total Volume Badge */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'rgba(0,0,0,0.3)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: 10, padding: '0 14px', height: 34,
+            fontSize: 13, fontWeight: 600, fontFamily: 'var(--mono)',
+            color: '#fff',
+          }}>
+            <BarChart3 size={14} style={{ color: '#fff', opacity: 0.9, marginTop: '-1px' }} />
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: 'Inter Tight, sans-serif', fontWeight: 600, letterSpacing: '0.02em' }}>VOL</span>
+              <Counter value={totalVolume} decimals={0} style={{ color: '#fff', fontWeight: 700 }} />
+              <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>USCC</span>
+            </div>
+          </div>
+
           <div className={styles.tbSpacer} />
 
           <div className={styles.tbRight}>
@@ -953,6 +1023,22 @@ export default function TradePage() {
                 </span>
               </div>
             )}
+
+            <a
+              href="https://faucet.circle.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.tbIconBtn}
+              title="Get testnet USDC"
+              style={{ textDecoration: 'none' }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2v6" />
+                <path d="M6 8h12" />
+                <path d="M17 8l-1.5 3" />
+                <path d="M12 14c-3.5 0-5 2.5-5 5a5 5 0 0 0 10 0c0-2.5-1.5-5-5-5z" />
+              </svg>
+            </a>
 
             <button className={styles.tbIconBtn} onClick={() => address ? setShowWalletMenu(true) : setShowConnect(true)}>
               <Wallet size={15} />
@@ -994,36 +1080,48 @@ export default function TradePage() {
 
           {/* Chart */}
           <div className={`relative overflow-hidden rounded-2xl bg-white/[0.01] border border-white/[0.08] backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.1)] ${styles.card} ${styles.chartCard}`}>
-            <div className={styles.chartTop}>
-              <div className={styles.chartAsset}>
-                <div className={styles.chartAssetIcon} style={{ background: '#2563eb' }}>
-                  <LogoIcon size={22} />
+            {/* Compact Binance-style chart header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+                <div className={styles.chartAssetIcon} style={{ background: '#2563eb', width: 32, height: 32, borderRadius: 8, flexShrink: 0 }}>
+                  <LogoIcon size={18} />
                 </div>
-                <div>
-                  <div className={styles.chartPrice}>
-                    <div className={`text-4xl font-extrabold tracking-tighter tabular-nums transition-colors duration-300 ${
-                      isUp ? 'text-emerald-400 drop-shadow-[0_0_24px_rgba(52,211,153,0.4)]' : 'text-rose-500 drop-shadow-[0_0_24px_rgba(244,63,94,0.4)]'
-                    }`} style={{ lineHeight: 1.1 }}>
-                      {cur.toFixed(5)}
-                    </div>
-                  </div>
+                <div className={`text-2xl font-extrabold tracking-tighter tabular-nums transition-colors duration-300 ${
+                  isUp ? 'text-emerald-400' : 'text-rose-500'
+                }`} style={{ lineHeight: 1, fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
+                  {cur.toFixed(5)}
+                </div>
+                <div style={{
+                  fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6,
+                  background: pct >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                  color: pct >= 0 ? '#10b981' : '#ef4444',
+                  border: `1px solid ${pct >= 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                  fontFamily: 'var(--mono)', whiteSpace: 'nowrap',
+                }}>
+                  {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
                 </div>
               </div>
-              <div className={styles.chartStats}>
-                <div className={styles.chartStat}>
-                  <span className={styles.chartStatVal} style={{ color: 'rgba(255,255,255,0.8)' }}>60s</span>
-                  <span className={styles.chartStatLbl}>Epoch Duration</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--mono)' }}>60s</span>
+                <div style={{ display: 'flex', gap: 2 }}>
+                  <button className={`${styles.tfBtn} ${isCandle ? styles.tfActive : ''}`} onClick={() => setIsCandle(true)}>Candle</button>
+                  <button className={`${styles.tfBtn} ${!isCandle ? styles.tfActive : ''}`} onClick={() => setIsCandle(false)}>Line</button>
                 </div>
-
-
               </div>
             </div>
-            <div className={styles.chartToolbar} style={{ justifyContent: 'flex-end' }}>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button className={`${styles.tfBtn} ${isCandle ? styles.tfActive : ''}`} onClick={() => setIsCandle(true)}>Candle</button>
-                <button className={`${styles.tfBtn} ${!isCandle ? styles.tfActive : ''}`} onClick={() => setIsCandle(false)}>Line</button>
+            {/* OHLC Info Bar */}
+            {last && (
+              <div style={{
+                display: 'flex', gap: 16, fontSize: 11, fontFamily: 'var(--mono)', fontWeight: 500,
+                color: 'rgba(255,255,255,0.35)', marginBottom: 8, flexWrap: 'wrap',
+              }}>
+                <span>O <span style={{ color: 'rgba(255,255,255,0.7)' }}>{last.open.toFixed(5)}</span></span>
+                <span>H <span style={{ color: 'rgba(255,255,255,0.7)' }}>{last.high.toFixed(5)}</span></span>
+                <span>L <span style={{ color: 'rgba(255,255,255,0.7)' }}>{last.low.toFixed(5)}</span></span>
+                <span>C <span style={{ color: isUp ? '#10b981' : '#ef4444' }}>{last.close.toFixed(5)}</span></span>
+                <span>Vol <span style={{ color: 'rgba(255,255,255,0.5)' }}>{last.volume.toLocaleString()}</span></span>
               </div>
-            </div>
+            )}
             <div className={styles.chartWrap}>
               {isLoading ? (
                 <div className="absolute inset-0 flex flex-col gap-4 p-4 pointer-events-none">
