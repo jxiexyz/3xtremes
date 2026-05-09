@@ -311,16 +311,19 @@ function computeCandles(seed: bigint, startPrice: number): Candle[] {
 
 let isBackgroundSettling = false;
 
-async function startRoundOnChain() {
+async function startRoundOnChain(prevSettleTx?: `0x${string}`) {
   log("🚀 Sending startRound to chain...");
-  const ok = await sendTx("startRound", () =>
-    walletClient.writeContract({
+  let startTxHash: `0x${string}` | null = null;
+  const ok = await sendTx("startRound", async () => {
+    const hash = await walletClient.writeContract({
       address: ROUND_ENGINE_ADDRESS,
       abi: ROUND_ENGINE_ABI,
       functionName: "startRound",
       gas: 3000000n,
-    })
-  );
+    });
+    startTxHash = hash;
+    return hash;
+  });
 
   if (!ok) {
     const isActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
@@ -348,8 +351,8 @@ async function startRoundOnChain() {
     const candles = computeCandles(seedBig, startPriceNum);
     const finalPrice = candles[candles.length - 1].close;
 
-    broadcast({ type: "ROUND_SETTLED", roundId: roundIdNum - 1, finalPrice: startPriceNum });
-    broadcast({ type: "ROUND_START", roundId: roundIdNum, startPrice: startPriceNum });
+    // Broadcast with TX hashes so frontend can verify on ArcScan
+    broadcast({ type: "ROUND_START", roundId: roundIdNum, startPrice: startPriceNum, startTx: startTxHash, settleTx: prevSettleTx });
 
     streamCandles(roundIdNum, candles, finalPrice);
   } catch (err: any) {
@@ -460,18 +463,23 @@ async function settleOnChain(roundId: number, finalPrice: number) {
   log(`🏁 Settling round #${roundId} on-chain at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
   let attempts = 0;
   while (attempts < 10) {
-    const ok = await sendTx("settleRound", () =>
-      walletClient.writeContract({
+    let settleTxHash: `0x${string}` | null = null;
+    const ok = await sendTx("settleRound", async () => {
+      const hash = await walletClient.writeContract({
         address: ROUND_ENGINE_ADDRESS,
         abi: ROUND_ENGINE_ABI,
         functionName: "settleRound",
         args: [BigInt(Math.floor(finalPrice))],
         gas: 3000000n,
-      })
-    );
-    if (ok) {
-      log(`✅ Round #${roundId} settled on-chain!`);
-      await startRoundOnChain();
+      });
+      settleTxHash = hash;
+      return hash;
+    });
+    if (ok && settleTxHash) {
+      log(`✅ Round #${roundId} settled on-chain! TX: ${settleTxHash}`);
+      // Broadcast settle TX so frontend can link to ArcScan
+      broadcast({ type: "ROUND_SETTLED", roundId, finalPrice, settleTx: settleTxHash });
+      await startRoundOnChain(settleTxHash);
       return;
     }
     attempts++;

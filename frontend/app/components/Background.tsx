@@ -12,7 +12,7 @@ export function Background() {
         }}
       />
 
-      {/* 2. Static Wave Glows — CSS radial-gradients are GPU-cached, no per-frame cost */}
+      {/* 2. Static Wave Glows - CSS radial-gradients are GPU-cached, no per-frame cost */}
       <div
         className="absolute top-0 left-0 w-full h-[600px]"
         style={{ background: 'radial-gradient(ellipse 60% 40% at 20% 60%, rgba(29,78,216,0.35) 0%, transparent 70%)' }}

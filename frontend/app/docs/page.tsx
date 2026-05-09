@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Terminal, ShieldAlert, Zap, Layers, Cpu, ArrowRight, BookOpen, Lock, Code2, Activity } from 'lucide-react';
+import { Terminal, ShieldAlert, Zap, Layers, Cpu, ArrowRight, BookOpen, Lock, Code2, Activity, Calculator, Coins, Database } from 'lucide-react';
 
 export default function DocsPage() {
   return (
@@ -35,22 +35,23 @@ export default function DocsPage() {
               <ul className="space-y-2 text-[13px]">
                 <li><a href="#introduction" className="text-white/60 hover:text-white transition-colors block py-1">Introduction</a></li>
                 <li><a href="#core-concepts" className="text-white/60 hover:text-white transition-colors block py-1">Core Concepts</a></li>
-                <li><a href="#architecture" className="text-white/60 hover:text-white transition-colors block py-1">Architecture</a></li>
               </ul>
             </div>
             <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Integration</h4>
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Deep Dive</h4>
               <ul className="space-y-2 text-[13px]">
-                <li><a href="#quick-start" className="text-white/60 hover:text-white transition-colors block py-1">Quick Start</a></li>
-                <li><a href="#api-reference" className="text-white/60 hover:text-white transition-colors block py-1">WebSocket API</a></li>
-                <li><a href="#user-flow" className="text-white/60 hover:text-white transition-colors block py-1">Lifecycle & Flow</a></li>
+                <li><a href="#architecture" className="text-white/60 hover:text-white transition-colors block py-1">Architecture & Bots</a></li>
+                <li><a href="#vrf-engine" className="text-white/60 hover:text-white transition-colors block py-1">VRF Pricing Engine</a></li>
+                <li><a href="#vault-mechanics" className="text-white/60 hover:text-white transition-colors block py-1">Vault Mechanics (USCC)</a></li>
+                <li><a href="#trading-math" className="text-white/60 hover:text-white transition-colors block py-1">Trading Mathematics</a></li>
+                <li><a href="#protocol-economy" className="text-white/60 hover:text-white transition-colors block py-1">Protocol Economy</a></li>
               </ul>
             </div>
+
             <div>
               <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Resources</h4>
               <ul className="space-y-2 text-[13px]">
-                <li><a href="#security" className="text-white/60 hover:text-white transition-colors block py-1">Security & Risk</a></li>
-                <li><a href="#faq" className="text-white/60 hover:text-white transition-colors block py-1">FAQ</a></li>
+                <li><a href="#security" className="text-white/60 hover:text-white transition-colors block py-1">Security & Risk Limits</a></li>
               </ul>
             </div>
           </div>
@@ -60,9 +61,9 @@ export default function DocsPage() {
         <main className="flex-1 min-w-0 max-w-3xl prose prose-invert prose-blue">
           
           <header className="mb-16">
-            <h1 className="text-3xl md:text-5xl font-bold tracking-tight text-white mb-4">Documentation</h1>
+            <h1 className="text-3xl md:text-5xl font-bold tracking-tight text-white mb-4">Technical Whitepaper</h1>
             <p className="text-lg text-white/50 leading-relaxed">
-              Explore the infrastructure powering 3xtremes: a high-velocity, low-latency prediction market engine designed for extreme volatility and instantaneous settlement.
+              Explore the infrastructure powering 3xtremes: a high-velocity, low-latency derivative market engine designed for extreme leverage up to 10,000x and transparent, cryptographically secure settlement.
             </p>
           </header>
 
@@ -72,13 +73,10 @@ export default function DocsPage() {
             <section id="introduction" className="scroll-mt-24">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-blue-500/10 rounded-lg border border-blue-500/20"><BookOpen className="w-5 h-5 text-blue-400" /></div>
-                <h2 className="text-2xl font-bold text-white m-0">What is 3xtremes?</h2>
+                <h2 className="text-2xl font-bold text-white m-0">Introduction</h2>
               </div>
               <p className="text-white/70 leading-relaxed text-[15px]">
-                3xtremes is a decentralized infrastructure layer for ultra-short-term prediction markets. We condense market volatility into 60-second execution epochs, allowing users to leverage capital up to 10,000x on real-time price feeds.
-              </p>
-              <p className="text-white/70 leading-relaxed text-[15px] mt-4">
-                Unlike traditional exchanges that rely on slow order books and complex margin requirements, 3xtremes operates as a binary engine. You predict the vector of the asset (Long/Short). If correct at the end of the epoch, you realize exponential gains. If the threshold is breached, the position is instantly liquidated. No margin calls, no delays.
+                3xtremes operates as an on-chain trading platform built on the Arc Testnet. Unlike traditional order-book exchanges, it relies on a <strong>round-based settlement</strong> system. We condense market volatility into 60-second execution epochs, allowing users to leverage capital up to 10,000x on real-time simulated price feeds.
               </p>
             </section>
 
@@ -86,32 +84,32 @@ export default function DocsPage() {
             <section id="core-concepts" className="scroll-mt-24">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20"><Zap className="w-5 h-5 text-emerald-400" /></div>
-                <h2 className="text-2xl font-bold text-white m-0">Core Concepts</h2>
+                <h2 className="text-2xl font-bold text-white m-0">The 60-Second Epoch Loop</h2>
               </div>
               
               <div className="grid md:grid-cols-2 gap-4 mt-6">
                 <div className="p-5 bg-white/[0.02] border border-white/5 rounded-xl">
-                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400" /> 60-Second Epochs</h3>
+                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><Activity className="w-4 h-4 text-blue-400" /> 1. Initiation (T-60s)</h3>
                   <p className="text-[13px] text-white/60 leading-relaxed m-0">
-                    Markets operate in continuous 60-second loops. Positions opened during an epoch are locked at T-5 seconds and settled simultaneously at T-0 based on the absolute oracle price.
+                    The Keeper bot triggers the start of a round. A cryptographic seed is requested from the Gelato VRF to ensure absolute fairness.
                   </p>
                 </div>
                 <div className="p-5 bg-white/[0.02] border border-white/5 rounded-xl">
-                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><ArrowRight className="w-4 h-4 text-rose-400" /> Hyper-Leverage</h3>
+                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><ArrowRight className="w-4 h-4 text-rose-400" /> 2. Trading Window</h3>
                   <p className="text-[13px] text-white/60 leading-relaxed m-0">
-                    Capital can be multiplied from 10x up to 10,000x. High leverage radically compresses the liquidation threshold, amplifying both potential upside and absolute risk.
+                    From T-60s to T-5s, users can open Long or Short positions with massive leverage based on the real-time streamed prices.
                   </p>
                 </div>
                 <div className="p-5 bg-white/[0.02] border border-white/5 rounded-xl">
-                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-orange-400" /> Absolute Liquidation</h3>
+                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><Lock className="w-4 h-4 text-orange-400" /> 3. Lock Window (T-5s)</h3>
                   <p className="text-[13px] text-white/60 leading-relaxed m-0">
-                    The liquidation engine operates with zero tolerance. If PnL hits -100% within the epoch, the position is systematically seized. Margin calls do not exist in the protocol.
+                    In the final 5 seconds, all actions are frozen. No positions can be opened or closed, effectively eliminating front-running and latency arbitrage.
                   </p>
                 </div>
                 <div className="p-5 bg-white/[0.02] border border-white/5 rounded-xl">
-                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><Layers className="w-4 h-4 text-purple-400" /> EVM Compatibility</h3>
+                  <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-purple-400" /> 4. Settlement (T-0s)</h3>
                   <p className="text-[13px] text-white/60 leading-relaxed m-0">
-                    Natively integrated with EVM architectures (currently running on ARC Testnet). Balances and settlements are anchored using EIP-6963 compatible wallets.
+                    The round concludes. The final price is calculated on-chain, and all active positions are settled automatically.
                   </p>
                 </div>
               </div>
@@ -121,117 +119,183 @@ export default function DocsPage() {
             <section id="architecture" className="scroll-mt-24">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-purple-500/10 rounded-lg border border-purple-500/20"><Cpu className="w-5 h-5 text-purple-400" /></div>
-                <h2 className="text-2xl font-bold text-white m-0">Architecture</h2>
+                <h2 className="text-2xl font-bold text-white m-0">Architecture & Bots</h2>
               </div>
               <p className="text-white/70 leading-relaxed text-[15px] mb-6">
-                3xtremes utilizes a hybrid architecture to achieve sub-second execution while maintaining verifiable blockchain state synchronization.
+                3xtremes utilizes an off-chain worker infrastructure to handle extreme frequencies without bloating the EVM gas state.
               </p>
               
               <ul className="space-y-4">
                 <li className="flex gap-4">
                   <div className="mt-1 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
                   <div>
-                    <strong className="text-white text-[14px]">WebSocket Data Layer</strong>
-                    <p className="text-[14px] text-white/60 m-0 mt-1">A high-throughput WebSocket connection streams tick-by-tick market data, ensuring clients render real-time charts at 60fps without polling overhead.</p>
+                    <strong className="text-white text-[14px]">Keeper Bot</strong>
+                    <p className="text-[14px] text-white/60 m-0 mt-1">The heartbeat of the system. It handles round lifecycles, streams pre-computed VRF candles to the frontend via WebSocket, and synchronizes the current price on-chain every second.</p>
                   </div>
                 </li>
                 <li className="flex gap-4">
-                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                   <div>
-                    <strong className="text-white text-[14px]">Optimistic Execution UI</strong>
-                    <p className="text-[14px] text-white/60 m-0 mt-1">Client-side state management immediately reflects position entries locally. True confirmation follows milliseconds later from the matching engine.</p>
-                  </div>
-                </li>
-                <li className="flex gap-4">
-                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-orange-500 flex-shrink-0" />
-                  <div>
-                    <strong className="text-white text-[14px]">Settlement Engine</strong>
-                    <p className="text-[14px] text-white/60 m-0 mt-1">On round completion (T-0), the backend engine calculates PnL delta against the oracle price, distributing rewards or sweeping margin atomically.</p>
+                    <strong className="text-white text-[14px]">Liquidator Bot (Wick Detection)</strong>
+                    <p className="text-[14px] text-white/60 m-0 mt-1">An independent bot constantly scanning open positions. Crucially, it evaluates the <strong>High</strong> and <strong>Low</strong> of every candle tick - not just the Close. If a position hits -100% PnL, the bot liquidates it instantly on-chain, earning a 2% margin reward.</p>
                   </div>
                 </li>
               </ul>
             </section>
 
-            {/* QUICK START */}
-            <section id="quick-start" className="scroll-mt-24">
+            {/* VRF ENGINE */}
+            <section id="vrf-engine" className="scroll-mt-24">
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-pink-500/10 rounded-lg border border-pink-500/20"><Terminal className="w-5 h-5 text-pink-400" /></div>
-                <h2 className="text-2xl font-bold text-white m-0">Quick Start</h2>
+                <div className="p-2 bg-emerald-500/10 rounded-lg border border-emerald-500/20"><Layers className="w-5 h-5 text-emerald-400" /></div>
+                <h2 className="text-2xl font-bold text-white m-0">VRF Deterministic Engine</h2>
               </div>
               <p className="text-white/70 leading-relaxed text-[15px] mb-4">
-                Run the frontend application locally to connect with the 3xtremes testnet environment.
+                How do we ensure that the platform owners cannot manipulate the charts to liquidate users? By using a Verifiable Random Function (VRF). The price candles are purely mathematical derivatives of an on-chain seed.
               </p>
               
-              <div className="bg-[#111] border border-white/10 rounded-xl overflow-hidden mt-4">
-                <div className="flex items-center px-4 py-2 bg-white/[0.02] border-b border-white/5 text-xs text-white/40 font-mono">
-                  Terminal
-                </div>
-                <div className="p-4 overflow-x-auto text-sm font-mono text-emerald-400">
-                  <div className="opacity-50 text-white/50 mb-1"># Clone the repository</div>
-                  <div>git clone https://github.com/jxiexyz/3xtremes.git</div>
-                  <div>cd 3xtremes/frontend</div>
-                  <div className="opacity-50 text-white/50 mt-3 mb-1"># Install dependencies</div>
-                  <div>npm install</div>
-                  <div className="opacity-50 text-white/50 mt-3 mb-1"># Start the development server</div>
-                  <div>npm run dev</div>
-                </div>
+              <div className="bg-[#111] border border-white/10 rounded-xl p-5 mb-4">
+                <h4 className="text-white text-sm font-bold mb-3">Candle Generation Algorithm</h4>
+                <ul className="space-y-2 text-[13px] text-white/60 list-disc list-inside">
+                  <li><strong>XOR Hash:</strong> Every second evaluates a hash: <code>h = seed ^ (second * MAGIC_CONSTANT)</code></li>
+                  <li><strong>Global Drift & Noise:</strong> Introduces macro trends (±15) and micro volatility (±150 ticks per second).</li>
+                  <li><strong>Mean Reversion Gravity:</strong> A 5% structural pull toward the starting price to prevent infinite spiraling.</li>
+                  <li><strong>Volatility Tiers:</strong> Triggers random volatility spikes ranging from 0.01% up to 3.00% absolute deviation.</li>
+                </ul>
               </div>
+              <p className="text-white/70 leading-relaxed text-[15px]">
+                Because the algorithm is open-source, any user can verify that the live chart precisely matches the cryptographic seed emitted by the smart contract. Manipulation is mathematically impossible.
+              </p>
             </section>
 
-            {/* API REFERENCE */}
-            <section id="api-reference" className="scroll-mt-24">
+            {/* VAULT MECHANICS */}
+            <section id="vault-mechanics" className="scroll-mt-24">
               <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20"><Code2 className="w-5 h-5 text-yellow-400" /></div>
-                <h2 className="text-2xl font-bold text-white m-0">WebSocket API</h2>
+                <div className="p-2 bg-indigo-500/10 rounded-lg border border-indigo-500/20"><Database className="w-5 h-5 text-indigo-400" /></div>
+                <h2 className="text-2xl font-bold text-white m-0">Vault Mechanics (USCC)</h2>
               </div>
               <p className="text-white/70 leading-relaxed text-[15px] mb-6">
-                Direct integration is achieved via a stateful WebSocket connection. Payloads utilize strict JSON formatting.
+                3xtremes operates using a highly optimized internal accounting system managed by the <code>CreditVault</code> smart contract. To interact with the trading engine, users must deposit USDC, which is then converted into USCC.
               </p>
+              
+              <ul className="space-y-4">
+                <li className="flex gap-4">
+                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                  <div>
+                    <strong className="text-white text-[14px]">The 1:1000 Exchange Rate</strong>
+                    <p className="text-[14px] text-white/60 m-0 mt-1">When depositing USDC (minimum 1 USDC), the vault credits the user with USCC at a 1:1000 ratio. This provides the necessary granularity to execute micro-margin trades at hyper-leverage levels without running into precision rounding errors.</p>
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                  <div>
+                    <strong className="text-white text-[14px]">Not an ERC20 Token</strong>
+                    <p className="text-[14px] text-white/60 m-0 mt-1">USCC is <strong>not</strong> a transferable token. It is purely an internal state mapping within the <code>CreditVault</code>. This means USCC cannot be sent to other wallets, traded on external DEXs, or viewed in MetaMask. It exists solely to optimize gas costs during the 60-second settlement loops.</p>
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <div className="mt-1 w-1.5 h-1.5 rounded-full bg-rose-500 flex-shrink-0" />
+                  <div>
+                    <strong className="text-white text-[14px]">The Withdrawal Guard</strong>
+                    <p className="text-[14px] text-white/60 m-0 mt-1">Security is paramount. The vault strictly prohibits any USDC withdrawals if the user has <em>any</em> active open positions (<code>openPositionCount &gt; 0</code>). This completely neutralizes flash-loan attacks or reentrancy exploits where an attacker might open a massive highly-leveraged position and immediately attempt to withdraw their underlying collateral before liquidation occurs.</p>
+                  </div>
+                </li>
+              </ul>
+            </section>
 
+            {/* TRADING MATHEMATICS */}
+            <section id="trading-math" className="scroll-mt-24">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-pink-500/10 rounded-lg border border-pink-500/20"><Calculator className="w-5 h-5 text-pink-400" /></div>
+                <h2 className="text-2xl font-bold text-white m-0">Trading Mathematics</h2>
+              </div>
+              
               <div className="space-y-6">
-                <div>
-                  <h4 className="text-[15px] font-bold text-white mb-3">Opening a Position</h4>
-                  <p className="text-[14px] text-white/60 mb-3">Construct an <code>OPEN_POSITION</code> payload to enter a trade during the active window (T-60s to T-5s).</p>
-                  <div className="bg-[#111] border border-white/10 rounded-xl p-4 overflow-x-auto text-[13px] font-mono text-white/80">
-<pre className="m-0"><code>{`{
-  "type": "OPEN_POSITION",
-  "trader": "0xYourWalletAddress...",
-  "isLong": true,
-  "margin": 10000000,    // Scaled to 6 decimals (10.00)
-  "leverage": 1000,      // Multiplier (1000x)
-  "price": 128500        // Expected entry price
-}`}</code></pre>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-center">
+                    <div className="text-xs text-white/50 mb-1">NORMAL</div>
+                    <div className="text-lg font-bold text-white">10x</div>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-center">
+                    <div className="text-xs text-white/50 mb-1">WILD</div>
+                    <div className="text-lg font-bold text-emerald-400">100x</div>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-center">
+                    <div className="text-xs text-white/50 mb-1">INSANE</div>
+                    <div className="text-lg font-bold text-orange-400">1,000x</div>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-rose-500/30 rounded-lg text-center">
+                    <div className="text-xs text-rose-500/70 mb-1">EXTREME</div>
+                    <div className="text-lg font-bold text-rose-500">10,000x</div>
                   </div>
                 </div>
 
-                <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 flex gap-3">
-                  <div className="text-blue-400 mt-0.5"><BookOpen className="w-4 h-4" /></div>
-                  <div className="text-[13px] text-blue-200/80 leading-relaxed">
-                    <strong className="text-blue-300 block mb-1">Note on Validation</strong>
-                    The backend verifies balance states and active epoch windows before confirming. If successful, you will receive a <code>POSITION_CONFIRMED</code> response. If the epoch is locked, you will receive <code>POSITION_FAILED</code>.
+                <div>
+                  <h4 className="text-white text-[15px] font-bold mb-2">Absolute Liquidation</h4>
+                  <p className="text-[14px] text-white/60 mb-2">There are no margin calls. If your position hits -100% PnL, it is instantly seized. The formula is exact:</p>
+                  <div className="bg-[#111] p-3 rounded-lg text-[13px] font-mono text-emerald-300">
+                    LONG Liquidation = EntryPrice - (EntryPrice / Leverage)<br/>
+                    SHORT Liquidation = EntryPrice + (EntryPrice / Leverage)
                   </div>
+                  <p className="text-[13px] text-rose-400 mt-2 italic">At 10,000x leverage, a mere 0.01% price movement against your position results in immediate liquidation.</p>
                 </div>
               </div>
             </section>
 
-            {/* SECURITY */}
+            {/* PROTOCOL ECONOMY */}
+            <section id="protocol-economy" className="scroll-mt-24">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20"><Coins className="w-5 h-5 text-yellow-400" /></div>
+                <h2 className="text-2xl font-bold text-white m-0">Protocol Economy</h2>
+              </div>
+              <p className="text-white/70 leading-relaxed text-[15px] mb-4">
+                The financial stability of the platform relies on the FeeManager and the Insurance Fund.
+              </p>
+              
+              <ul className="space-y-4">
+                <li className="p-4 border border-white/10 rounded-xl bg-white/[0.02]">
+                  <strong className="text-white text-[14px] block mb-1">Trading Spread (0.01%)</strong>
+                  <p className="text-[13px] text-white/60 m-0">A flat fee of 0.01% of the total SIZE (not margin) is charged upon opening and when closing in profit. Distribution: <strong>30% Insurance Fund, 70% Protocol Revenue</strong>.</p>
+                </li>
+                <li className="p-4 border border-rose-500/20 rounded-xl bg-rose-500/5">
+                  <strong className="text-white text-[14px] block mb-1">Liquidation Distribution</strong>
+                  <p className="text-[13px] text-white/60 m-0">When a position is liquidated, the margin is seized. <strong>2%</strong> goes to the Liquidator Bot as a gas reward. The remaining <strong>98%</strong> flows to the FeeManager, where <strong>95% bolsters the Insurance Fund</strong> and 5% goes to the protocol.</p>
+                </li>
+                <li className="p-4 border border-blue-500/20 rounded-xl bg-blue-500/5">
+                  <strong className="text-white text-[14px] block mb-1">The Insurance Fund</strong>
+                  <p className="text-[13px] text-white/60 m-0">Acts as the ultimate counter-party. If traders collectively win more than they lose in an epoch, the Insurance Fund covers the deficit, ensuring the protocol remains 100% solvent.</p>
+                </li>
+              </ul>
+            </section>
+
+
+
+            {/* SECURITY & RISK LIMITS */}
             <section id="security" className="scroll-mt-24 border-t border-white/10 pt-16">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-rose-500/10 rounded-lg border border-rose-500/20"><Lock className="w-5 h-5 text-rose-400" /></div>
-                <h2 className="text-2xl font-bold text-white m-0">Security & Risk Disclosures</h2>
+                <h2 className="text-2xl font-bold text-white m-0">Security & Risk Limits</h2>
               </div>
               <p className="text-white/70 leading-relaxed text-[15px] mb-6">
-                Operating high-leverage infrastructure requires uncompromising security constraints and full transparency regarding user risk.
+                Operating high-leverage infrastructure requires uncompromising security constraints. We employ 6 layers of protection.
               </p>
 
-              <div className="grid gap-4">
-                <div className="p-4 border-l-2 border-orange-500 bg-orange-500/5">
-                  <h4 className="text-sm font-bold text-orange-400 mb-1">Epoch Locking (Anti-Snipe)</h4>
-                  <p className="text-[13px] text-orange-200/70 m-0">At T-5 seconds, the protocol enforces a hard lock on the order book. This guarantees fairness by preventing algorithmic front-running or late-stage sniping based on impending resolution prices.</p>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="p-4 border border-white/5 bg-white/[0.02] rounded-lg">
+                  <h4 className="text-sm font-bold text-white mb-1">Epoch Locking (Anti-Snipe)</h4>
+                  <p className="text-[13px] text-white/50 m-0">T-5s hard lock on the order book guarantees fairness by preventing late-stage algorithmic sniping.</p>
                 </div>
-                <div className="p-4 border-l-2 border-rose-500 bg-rose-500/5">
-                  <h4 className="text-sm font-bold text-rose-400 mb-1">Financial Risk Warning</h4>
-                  <p className="text-[13px] text-rose-200/70 m-0">Deploying 10,000x leverage on sub-minute epochs carries severe risk of total margin loss. The system does not emit margin calls. Assets are liquidated instantly at the threshold. Integrate and interact with strict risk management parameters.</p>
+                <div className="p-4 border border-white/5 bg-white/[0.02] rounded-lg">
+                  <h4 className="text-sm font-bold text-white mb-1">OI Imbalance Cap</h4>
+                  <p className="text-[13px] text-white/50 m-0">Global Open Interest skew is capped at 100M USCC to prevent systemic collapse during extreme one-sided betting.</p>
+                </div>
+                <div className="p-4 border border-white/5 bg-white/[0.02] rounded-lg">
+                  <h4 className="text-sm font-bold text-white mb-1">Net Exposure Limit</h4>
+                  <p className="text-[13px] text-white/50 m-0">Individual wallets are capped at ±100M USCC exposure to prevent massive hedge-drain attacks.</p>
+                </div>
+                <div className="p-4 border border-white/5 bg-white/[0.02] rounded-lg">
+                  <h4 className="text-sm font-bold text-white mb-1">Withdrawal Guard</h4>
+                  <p className="text-[13px] text-white/50 m-0">Users cannot withdraw USDC while any position is open, eliminating reentrancy and flash-loan vectors.</p>
                 </div>
               </div>
             </section>

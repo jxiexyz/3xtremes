@@ -10,7 +10,7 @@ import ConnectWalletModal from '../../components/wallet/ConnectWalletModal'
 import WithdrawModal from '../../components/wallet/WithdrawModal'
 import Link from 'next/link'
 import styles from './trade.module.css'
-import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3, Activity } from 'lucide-react'
+import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3, Activity, Droplet } from 'lucide-react'
 
 // --- UX State Components ---
 function SkeletonLine({ width = '100%', height = '16px', className = '' }: { width?: string, height?: string, className?: string }) {
@@ -299,7 +299,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
     });
     priceLinesRef.current = [];
 
-    // Hide lines when round is settling — stop here, don't re-add
+    // Hide lines when round is settling - stop here, don't re-add
     if (!showLines) return;
 
     // Add lines for each active position
@@ -546,7 +546,7 @@ export default function TradePage() {
     return !hasRealPos && op._txConfirmed && !wipedOutIds.has(op.positionId.toString());
   });
 
-  // Total trading volume (GLOBAL) — seeded with a realistic startup number, then accumulates via WS
+  // Total trading volume (GLOBAL) - seeded with a realistic startup number, then accumulates via WS
   const [totalVolume, setTotalVolume] = useState(0);
 
   // Load persisted volume on mount, or seed with 1.25M USCC for "startup vibe"
@@ -626,6 +626,8 @@ export default function TradePage() {
   const [isCandle, setIsCandle] = useState(true)
   const [countdown, setCountdown] = useState(60)
   const [currentEpoch, setCurrentEpoch] = useState<number | null>(null)
+  const [epochTxInfo, setEpochTxInfo] = useState<{ settleTx?: string; startTx?: string; roundId?: number } | null>(null)
+  const [showEpochPopup, setShowEpochPopup] = useState(false)
 
   // Load epoch from localStorage on mount
   useEffect(() => {
@@ -803,6 +805,10 @@ export default function TradePage() {
             setRoundStatus("Starting Next Round...");
             setOptimisticPositions([]);
             setSettlingCountdown(5);
+            // Store settle TX for on-chain verification
+            if (msg.settleTx) {
+              setEpochTxInfo(prev => ({ ...prev, settleTx: msg.settleTx, roundId: msg.roundId }));
+            }
             if (settlingTimerRef.current) clearInterval(settlingTimerRef.current);
             settlingTimerRef.current = setInterval(() => {
               setSettlingCountdown(prev => {
@@ -812,6 +818,8 @@ export default function TradePage() {
             }, 1000);
           } else if (msg.type === "ROUND_START") {
             if (msg.roundId) updateEpoch(msg.roundId);
+            // Store start TX and carry over settle TX for verification
+            setEpochTxInfo({ roundId: msg.roundId, startTx: msg.startTx, settleTx: msg.settleTx });
             setCountdown(60);
             setRoundStatus("Active");
             setSettlingCountdown(0);
@@ -889,7 +897,7 @@ export default function TradePage() {
   const [showConnect, setShowConnect]   = useState(false)
   const [showWalletMenu, setShowWalletMenu] = useState(false)
 
-  // Tracks which positions already had liquidation TX fired — prevents spam
+  // Tracks which positions already had liquidation TX fired - prevents spam
   const liquidationFiredRef = useRef<Set<string>>(new Set())
   const [mktTab, setMktTab]   = useState(0)
   const [orderTab, setOrderTab] = useState(0)
@@ -928,7 +936,7 @@ export default function TradePage() {
     allActive.forEach((p: any) => {
       const posId = p.positionId.toString();
 
-      // Already fired liquidation for this position — skip entirely
+      // Already fired liquidation for this position - skip entirely
       if (liquidationFiredRef.current.has(posId)) return;
 
       const liqPrice  = Number(p.liquidationPrice) / 1e5;
@@ -943,7 +951,7 @@ export default function TradePage() {
         : (lastCandle.close >= liqPrice);
 
       if (isLiquidatable) {
-        console.log(`💀 Wipeout #${posId} — price=${lastCandle.close} liqPrice=${liqPrice} margin=${margin}`);
+        console.log(`💀 Wipeout #${posId} - price=${lastCandle.close} liqPrice=${liqPrice} margin=${margin}`);
 
         // Permanently mark as wiped out → display freezes at -100%
         updateWipedOutIds(posId);
@@ -1043,17 +1051,25 @@ export default function TradePage() {
             3xtremes
           </Link>
 
-          {/* Epoch Total Badge */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.005) 100%)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.2)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
-            borderRadius: 10, padding: '0 16px', height: 38,
-            color: '#fff',
-          }}>
+          {/* Epoch Badge - Clickable for on-chain verification */}
+          <div
+            onClick={() => setShowEpochPopup(v => !v)}
+            title="Click to verify on-chain"
+            style={{
+              position: 'relative',
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.005) 100%)',
+              border: showEpochPopup ? '1px solid rgba(59,130,246,0.4)' : '1px solid rgba(255,255,255,0.06)',
+              boxShadow: showEpochPopup ? 'inset 0 1px 0 rgba(59,130,246,0.1), 0 0 0 2px rgba(59,130,246,0.1)' : 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.2)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              borderRadius: 10, padding: '0 16px', height: 38,
+              color: '#fff',
+              cursor: 'pointer',
+              transition: 'border-color 0.2s, box-shadow 0.2s',
+              userSelect: 'none',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: 0.4 }}>
               <LayoutGrid size={13} strokeWidth={2.5} />
               <span style={{ fontSize: 10, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, letterSpacing: '0.06em' }}>EPOCH</span>
@@ -1062,6 +1078,106 @@ export default function TradePage() {
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
               <span style={{ fontFamily: 'var(--mono)', fontSize: 15, fontWeight: 500, letterSpacing: '-0.02em', color: 'rgba(255,255,255,0.95)' }}>#{currentEpoch !== null ? currentEpoch : '--'}</span>
             </div>
+
+            {/* Epoch Verification Popup */}
+            {showEpochPopup && (
+              <>
+                {/* Backdrop */}
+                <div
+                  onClick={e => { e.stopPropagation(); setShowEpochPopup(false); }}
+                  style={{ position: 'fixed', inset: 0, zIndex: 998 }}
+                />
+                <div
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', top: 'calc(100% + 10px)', left: 0,
+                    zIndex: 999,
+                    background: 'rgba(5, 8, 20, 0.9)',
+                    backdropFilter: 'blur(32px) saturate(150%)',
+                    WebkitBackdropFilter: 'blur(32px) saturate(150%)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: 14,
+                    padding: '16px 18px',
+                    minWidth: 320,
+                    boxShadow: '0 24px 48px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
+                    display: 'flex', flexDirection: 'column', gap: 12,
+                  }}
+                >
+                  {/* Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px rgba(16,185,129,0.6)', animation: 'pulse 2s infinite' }} />
+                      <span style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 700, fontSize: 12, color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>On-Chain Verification</span>
+                    </div>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>#{currentEpoch ?? '--'}</span>
+                  </div>
+
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+
+                  {/* TX Rows */}
+                  {(epochTxInfo?.settleTx || epochTxInfo?.startTx) ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {epochTxInfo.settleTx && (
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>Settle TX</div>
+                          <a
+                            href={`https://testnet.arcscan.app/tx/${epochTxInfo.settleTx}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                              background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
+                              borderRadius: 8, padding: '8px 10px', textDecoration: 'none',
+                              transition: 'border-color 0.15s, background 0.15s',
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)'; }}
+                            onMouseOut={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.06)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.15)'; }}
+                          >
+                            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: '#10b981', letterSpacing: '-0.01em' }}>
+                              {epochTxInfo.settleTx.slice(0, 12)}...{epochTxInfo.settleTx.slice(-8)}
+                            </span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                          </a>
+                        </div>
+                      )}
+                      {epochTxInfo.startTx && (
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 5, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>Start TX</div>
+                          <a
+                            href={`https://testnet.arcscan.app/tx/${epochTxInfo.startTx}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                              background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)',
+                              borderRadius: 8, padding: '8px 10px', textDecoration: 'none',
+                              transition: 'border-color 0.15s, background 0.15s',
+                            }}
+                            onMouseOver={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.12)'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.3)'; }}
+                            onMouseOut={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.06)'; e.currentTarget.style.borderColor = 'rgba(59,130,246,0.15)'; }}
+                          >
+                            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: '#60a5fa', letterSpacing: '-0.01em' }}>
+                              {epochTxInfo.startTx.slice(0, 12)}...{epochTxInfo.startTx.slice(-8)}
+                            </span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px' }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(245,158,11,0.7)', flexShrink: 0 }} />
+                      <span style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontSize: 12, color: 'rgba(255,255,255,0.4)' }}>Waiting for next epoch to complete...</span>
+                    </div>
+                  )}
+
+                  <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontFamily: 'var(--font-sans), Inter, sans-serif', lineHeight: 1.5 }}>
+                    TX hashes are updated each epoch. Click any hash to verify on ArcScan.
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Total Volume Badge - Premium Stealth Design */}
@@ -1109,15 +1225,16 @@ export default function TradePage() {
               target="_blank"
               rel="noopener noreferrer"
               className={styles.tbIconBtn}
-              title="Get testnet USDC"
-              style={{ textDecoration: 'none' }}
+              title="Get Testnet USDC"
+              style={{ 
+                textDecoration: 'none', 
+                gap: '6px',
+                padding: '0 12px',
+                width: 'auto'
+              }}
             >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2v6" />
-                <path d="M6 8h12" />
-                <path d="M17 8l-1.5 3" />
-                <path d="M12 14c-3.5 0-5 2.5-5 5a5 5 0 0 0 10 0c0-2.5-1.5-5-5-5z" />
-              </svg>
+              <Droplet size={14} strokeWidth={2} />
+              <span style={{ fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>FAUCET</span>
             </a>
 
             <button className={styles.tbIconBtn} onClick={() => address ? setShowWalletMenu(true) : setShowConnect(true)}>
@@ -1295,7 +1412,7 @@ export default function TradePage() {
                 transform: scale(0.95) !important;
               }
             `}</style>
-            {/* Round Countdown — at the top for quick entry awareness */}
+            {/* Round Countdown - at the top for quick entry awareness */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span className="text-xs font-medium text-white/50">Epoch Closes In</span>
@@ -1439,7 +1556,7 @@ export default function TradePage() {
               )}
             </div>
 
-            {/* Action Button — right after leverage for quick entry */}
+            {/* Action Button - right after leverage for quick entry */}
             <div style={{ marginBottom: 20 }}>
               <button 
                 disabled={address ? (isOrderDisabled || isTxPending || countdown <= 7) : false}
@@ -1531,7 +1648,7 @@ export default function TradePage() {
                   }
                 }}
               >
-                {/* Button label — countdown lock takes highest priority */}
+                {/* Button label - countdown lock takes highest priority */}
                 {countdown <= 7 && address ? (
                   'ROUND LOCKED'
                 ) : isTxPending ? (
@@ -1612,7 +1729,7 @@ export default function TradePage() {
                         <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Win Rate</td>
                         <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.25)' }}>
                           <span style={{ color: winrate >= 50 ? '#10b981' : winrate > 0 ? '#f59e0b' : 'rgba(255,255,255,0.4)' }}>
-                            {closedPositions.length > 0 ? `${winrate.toFixed(0)}%` : '—'}
+                            {closedPositions.length > 0 ? `${winrate.toFixed(0)}%` : '-'}
                           </span>
                           {closedPositions.length > 0 && <span style={{ fontWeight: 400, fontSize: 10 }}> ({wins.length}/{closedPositions.length})</span>}
                         </td>
@@ -1626,7 +1743,7 @@ export default function TradePage() {
                                 {(totalProfit - totalLoss) >= 0 ? '+' : ''}{Math.abs(totalProfit - totalLoss).toFixed(2)}
                               </span> <span style={{ fontWeight: 500 }}>USCC</span>
                             </>
-                          ) : <span style={{ color: 'rgba(255,255,255,0.4)' }}>—</span>}
+                          ) : <span style={{ color: 'rgba(255,255,255,0.4)' }}>-</span>}
                         </td>
                       </tr>
                     </>

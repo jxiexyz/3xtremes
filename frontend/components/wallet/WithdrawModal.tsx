@@ -24,7 +24,7 @@ export default function WithdrawModal({ onClose }: Props) {
     query: { enabled: !!address, refetchInterval: 5000 },
   })
 
-  // Read open position count — to show warning if > 0
+  // Read open position count - to show warning if > 0
   const { data: openPositions } = useReadContract({
     address: CONTRACTS.CREDIT_VAULT as `0x${string}`,
     abi: [
@@ -178,7 +178,7 @@ export default function WithdrawModal({ onClose }: Props) {
               </div>
             )}
 
-            {/* Input — amount in USCC */}
+            {/* Input - amount in USCC */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: "'JetBrains Mono', monospace" }}>Amount (USCC)</span>
