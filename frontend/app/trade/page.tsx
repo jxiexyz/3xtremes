@@ -10,7 +10,7 @@ import ConnectWalletModal from '../../components/wallet/ConnectWalletModal'
 import WithdrawModal from '../../components/wallet/WithdrawModal'
 import Link from 'next/link'
 import styles from './trade.module.css'
-import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3 } from 'lucide-react'
+import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3, Activity } from 'lucide-react'
 
 // --- UX State Components ---
 function SkeletonLine({ width = '100%', height = '16px', className = '' }: { width?: string, height?: string, className?: string }) {
@@ -997,20 +997,30 @@ export default function TradePage() {
             3xtremes
           </Link>
 
-          {/* Total Volume Badge */}
+          {/* Total Volume Badge - Premium Stealth Design */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'rgba(0,0,0,0.3)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: 10, padding: '0 14px', height: 34,
-            fontSize: 13, fontWeight: 600, fontFamily: 'var(--mono)',
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.005) 100%)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.2)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderRadius: 10, padding: '0 16px', height: 38,
             color: '#fff',
           }}>
-            <BarChart3 size={14} style={{ color: '#fff', opacity: 0.9, marginTop: '-1px' }} />
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontFamily: 'Inter Tight, sans-serif', fontWeight: 600, letterSpacing: '0.02em' }}>VOL</span>
-              <Counter value={totalVolume} decimals={0} style={{ color: '#fff', fontWeight: 700 }} />
-              <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>USCC</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: 0.4 }}>
+              <Activity size={13} strokeWidth={2.5} />
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, letterSpacing: '0.06em' }}>VOL</span>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+              <Counter value={totalVolume} decimals={0} style={{ fontFamily: 'var(--mono)', fontSize: 15, fontWeight: 500, letterSpacing: '-0.02em', color: 'rgba(255,255,255,0.95)' }} />
+              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 500 }}>USCC</span>
+            </div>
+
+            {/* Tiny live pulse indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 2 }}>
+              <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.3)', animation: 'pulse 2s infinite' }} />
             </div>
           </div>
 
