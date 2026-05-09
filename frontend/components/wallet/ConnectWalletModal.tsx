@@ -1,17 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useConnect, useConnectors } from 'wagmi'
-import { Wallet, ChevronRight, Loader2 } from 'lucide-react'
+import { useConnect, useConnectors, useAccount, useSignMessage } from 'wagmi'
+import { Wallet, ChevronRight, Loader2, ShieldCheck, Fingerprint } from 'lucide-react'
 
 interface Props {
   onClose: () => void
 }
 
-// Well-known wallet icon mapping (inline SVG or known identifiers)
 function WalletIcon({ name, size = 32 }: { name: string; size?: number }) {
   const n = name.toLowerCase()
-
   if (n.includes('metamask')) {
     return (
       <svg width={size} height={size} viewBox="0 0 35 33" fill="none">
@@ -31,7 +29,6 @@ function WalletIcon({ name, size = 32 }: { name: string; size?: number }) {
       </svg>
     )
   }
-
   if (n.includes('coinbase')) {
     return (
       <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -40,7 +37,6 @@ function WalletIcon({ name, size = 32 }: { name: string; size?: number }) {
       </svg>
     )
   }
-
   if (n.includes('phantom')) {
     return (
       <svg width={size} height={size} viewBox="0 0 128 128" fill="none">
@@ -50,28 +46,19 @@ function WalletIcon({ name, size = 32 }: { name: string; size?: number }) {
       </svg>
     )
   }
-
-  // Generic wallet fallback
   return (
-    <div style={{
-      width: size, height: size, borderRadius: 8,
-      background: 'rgba(59,130,246,0.15)',
-      border: '1px solid rgba(59,130,246,0.2)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center'
-    }}>
+    <div style={{ width: size, height: size, borderRadius: 8, background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Wallet size={size * 0.55} color="#3b82f6" strokeWidth={1.5} />
     </div>
   )
 }
 
-// Clean display name — for EIP-6963 wallets, use their self-reported name
 function getWalletDisplayName(id: string, name: string): string {
   if (id === 'metaMaskSDK' || name.toLowerCase().includes('metamask')) return 'MetaMask'
   if (name.toLowerCase().includes('coinbase')) return 'Coinbase Wallet'
   if (id === 'phantom' || name.toLowerCase().includes('phantom')) return 'Phantom'
   if (name.toLowerCase().includes('rabby')) return 'Rabby Wallet'
   if (id === 'injected' && !name) return 'Browser Wallet'
-  // For all other EIP-6963 wallets, use the name they announced themselves with
   return name || 'Browser Wallet'
 }
 
@@ -84,31 +71,27 @@ function getWalletSubtitle(id: string, name: string): string {
   return 'Browser wallet · EVM compatible'
 }
 
+type Step = 'select' | 'signing' | 'done'
+
 export default function ConnectWalletModal({ onClose }: Props) {
   const { connect, isPending } = useConnect()
   const connectors = useConnectors()
+  const { address, isConnected } = useAccount()
+  const { signMessageAsync } = useSignMessage()
   const [connectingId, setConnectingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [step, setStep] = useState<Step>('select')
 
-  // Small delay so EIP-6963 wallet announcements have time to register
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), 100)
     return () => clearTimeout(t)
   }, [])
 
-  // Deduplicate: EIP-6963 wallets have unique rdns-based ids, but keep one per id
-  // Prefer connectors WITH an icon (EIP-6963 registered) over generic injected
   const seen = new Set<string>()
   const uniqueConnectors = [...connectors]
-    .sort((a, b) => {
-      // Prioritize connectors that have icons (real EIP-6963 wallets)
-      const aHasIcon = a.icon ? 1 : 0
-      const bHasIcon = b.icon ? 1 : 0
-      return bHasIcon - aHasIcon
-    })
+    .sort((a, b) => (b.icon ? 1 : 0) - (a.icon ? 1 : 0))
     .filter(c => {
-      // For plain "injected" without icon, only show if no other real wallet detected
       const key = c.id === 'injected' ? 'injected' : (c.id || c.name)
       if (seen.has(key)) return false
       seen.add(key)
@@ -121,7 +104,10 @@ export default function ConnectWalletModal({ onClose }: Props) {
     connect(
       { connector },
       {
-        onSuccess: () => onClose(),
+        onSuccess: () => {
+          setStep('signing')
+          setConnectingId(null)
+        },
         onError: (err) => {
           setError(err.message?.includes('rejected') ? 'Connection rejected by user.' : 'Could not connect. Make sure the wallet is installed and unlocked.')
           setConnectingId(null)
@@ -130,30 +116,120 @@ export default function ConnectWalletModal({ onClose }: Props) {
     )
   }
 
+  async function handleSign() {
+    setError(null)
+    try {
+      const nonce = Math.random().toString(36).substring(2, 10)
+      const timestamp = new Date().toISOString()
+      const message = `Welcome to 3xtremes\n\nSign this message to verify wallet ownership.\n\nThis does not trigger a transaction or cost any gas.\n\nNonce: ${nonce}\nTimestamp: ${timestamp}`
+      await signMessageAsync({ message })
+      setStep('done')
+      setTimeout(() => onClose(), 800)
+    } catch (err: any) {
+      setError(err.message?.includes('rejected') || err.message?.includes('denied')
+        ? 'Signature rejected. Please sign to continue.'
+        : 'Signature failed. Please try again.')
+    }
+  }
+
+  // Auto-trigger sign when step changes to signing and address is available
+  useEffect(() => {
+    if (step === 'signing' && address) {
+      handleSign()
+    }
+  }, [step, address])
+
+  const modalBase = {
+    position: 'fixed' as const, inset: 0,
+    background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(24px)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 99998, animation: 'iosFadeIn 0.3s ease-out forwards'
+  }
+
+  const cardBase = {
+    background: 'rgba(3, 7, 18, 0.4)', backdropFilter: 'blur(32px) saturate(150%)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    padding: 28, borderRadius: 24, display: 'flex', flexDirection: 'column' as const, gap: 20,
+    width: 360, boxShadow: '0 24px 48px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
+    boxSizing: 'border-box' as const,
+    animation: 'iosPop 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+  }
+
+  // Step 2: Signing / Step 3: Done
+  if (step === 'signing' || step === 'done') {
+    return (
+      <div onClick={onClose} style={modalBase}>
+        <div onClick={e => e.stopPropagation()} style={cardBase}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '12px 0' }}>
+            {step === 'done' ? (
+              <>
+                <div style={{
+                  width: 56, height: 56, borderRadius: '50%',
+                  background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  animation: 'iosPop 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards'
+                }}>
+                  <ShieldCheck size={26} color="#10b981" style={{ filter: 'drop-shadow(0 0 8px rgba(16,185,129,0.4))' }} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', fontFamily: 'var(--font-sans), Inter, sans-serif', letterSpacing: '-0.02em' }}>
+                    Verified
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-sans), Inter, sans-serif', marginTop: 4 }}>
+                    {address?.slice(0, 6)}...{address?.slice(-4)}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{
+                  width: 56, height: 56, borderRadius: '50%',
+                  background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Fingerprint size={26} color="#3b82f6" style={{ filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.4))' }} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', fontFamily: 'var(--font-sans), Inter, sans-serif', letterSpacing: '-0.02em' }}>
+                    Verify Ownership
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-sans), Inter, sans-serif', marginTop: 4, lineHeight: 1.5 }}>
+                    Sign the message in your wallet to confirm you own this address. No gas fees.
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(59,130,246,0.7)', fontSize: 12, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>
+                  <Loader2 size={14} style={{ animation: 'spin 0.7s linear infinite' }} />
+                  Waiting for signature...
+                </div>
+              </>
+            )}
+          </div>
+
+          {error && (
+            <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 12, padding: '10px 14px', fontSize: 12, color: 'rgba(239,68,68,0.8)', fontFamily: 'var(--font-sans), Inter, sans-serif', lineHeight: 1.4 }}>
+              {error}
+            </div>
+          )}
+
+          {error && (
+            <button
+              onClick={handleSign}
+              style={{ padding: '12px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#3b82f6', borderRadius: 12, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, cursor: 'pointer', fontSize: 13, transition: 'all 0.15s' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.15)' }}
+              onMouseOut={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.1)' }}
+            >Try Again</button>
+          )}
+
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        </div>
+      </div>
+    )
+  }
+
+  // Step 1: Select Wallet
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.6)',
-        backdropFilter: 'blur(24px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 99998,
-        animation: 'iosFadeIn 0.3s ease-out forwards'
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          background: 'rgba(3, 7, 18, 0.4)', backdropFilter: 'blur(32px) saturate(150%)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          padding: 28, borderRadius: 24, display: 'flex', flexDirection: 'column', gap: 20,
-          width: 360, boxShadow: '0 24px 48px -12px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
-          boxSizing: 'border-box',
-          animation: 'iosPop 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards'
-        }}
-      >
-        {/* Header */}
+    <div onClick={onClose} style={modalBase}>
+      <div onClick={e => e.stopPropagation()} style={cardBase}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -174,15 +250,12 @@ export default function ConnectWalletModal({ onClose }: Props) {
           >✕</button>
         </div>
 
-        {/* Subtitle */}
         <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-sans), Inter, sans-serif', marginTop: -10 }}>
           Choose a wallet to connect to 3xtremes
         </div>
 
-        {/* Wallet List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {!mounted ? (
-            // Loading skeleton while waiting for EIP-6963 wallet discovery
             [0, 1].map(i => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }}>
                 <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.04)' }} />
@@ -194,80 +267,63 @@ export default function ConnectWalletModal({ onClose }: Props) {
             ))
           ) : uniqueConnectors.length === 0 ? (
             <div style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 16, padding: '20px', textAlign: 'center' }}>
-              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>
-                No wallets detected
-              </div>
-              <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 6, fontFamily: 'var(--font-sans), Inter, sans-serif', lineHeight: 1.5 }}>
-                Install a wallet extension like MetaMask to get started.
-              </div>
+              <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>No wallets detected</div>
+              <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 6, fontFamily: 'var(--font-sans), Inter, sans-serif', lineHeight: 1.5 }}>Install a wallet extension like MetaMask to get started.</div>
             </div>
           ) : (
             uniqueConnectors.map((connector, i) => {
-            const isConnecting = connectingId === connector.uid && isPending
-            const displayName = getWalletDisplayName(connector.id, connector.name)
-            const subtitle = getWalletSubtitle(connector.id, connector.name)
-            return (
-              <button
-                key={connector.uid}
-                onClick={() => !isPending && handleConnect(connector)}
-                disabled={isPending}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
-                  background: isConnecting ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
-                  border: isConnecting ? '1px solid rgba(59,130,246,0.25)' : '1px solid rgba(255,255,255,0.05)',
-                  borderRadius: 14, cursor: isPending ? 'not-allowed' : 'pointer',
-                  textAlign: 'left', width: '100%', transition: 'all 0.15s',
-                  animation: `iosPop ${0.3 + i * 0.05}s cubic-bezier(0.32, 0.72, 0, 1) both`,
-                }}
-                onMouseOver={e => { if (!isPending) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; } }}
-                onMouseOut={e => { if (!isPending) { e.currentTarget.style.background = isConnecting ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = isConnecting ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.05)'; } }}
-              >
-                {/* Wallet icon */}
-                <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.03)' }}>
-                  {connector.icon ? (
-                    <img src={connector.icon} alt={displayName} width={40} height={40} style={{ borderRadius: 10, objectFit: 'contain' }} />
+              const isConnecting = connectingId === connector.uid && isPending
+              const displayName = getWalletDisplayName(connector.id, connector.name)
+              const subtitle = getWalletSubtitle(connector.id, connector.name)
+              return (
+                <button
+                  key={connector.uid}
+                  onClick={() => !isPending && handleConnect(connector)}
+                  disabled={isPending}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px',
+                    background: isConnecting ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)',
+                    border: isConnecting ? '1px solid rgba(59,130,246,0.25)' : '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: 14, cursor: isPending ? 'not-allowed' : 'pointer',
+                    textAlign: 'left', width: '100%', transition: 'all 0.15s',
+                    animation: `iosPop ${0.3 + i * 0.05}s cubic-bezier(0.32, 0.72, 0, 1) both`,
+                  }}
+                  onMouseOver={e => { if (!isPending) { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; } }}
+                  onMouseOut={e => { if (!isPending) { e.currentTarget.style.background = isConnecting ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = isConnecting ? 'rgba(59,130,246,0.25)' : 'rgba(255,255,255,0.05)'; } }}
+                >
+                  <div style={{ flexShrink: 0, width: 40, height: 40, borderRadius: 10, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.03)' }}>
+                    {connector.icon ? (
+                      <img src={connector.icon} alt={displayName} width={40} height={40} style={{ borderRadius: 10, objectFit: 'contain' }} />
+                    ) : (
+                      <WalletIcon name={connector.name} size={32} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: '#fff', fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-sans), Inter, sans-serif', marginBottom: 2 }}>{displayName}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>{subtitle}</div>
+                  </div>
+                  {isConnecting ? (
+                    <Loader2 size={16} color="rgba(59,130,246,0.8)" style={{ animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
                   ) : (
-                    <WalletIcon name={connector.name} size={32} />
+                    <ChevronRight size={16} color="rgba(255,255,255,0.2)" style={{ flexShrink: 0 }} />
                   )}
-                </div>
-
-                {/* Text */}
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: '#fff', fontWeight: 600, fontSize: 14, fontFamily: 'var(--font-sans), Inter, sans-serif', marginBottom: 2 }}>
-                    {displayName}
-                  </div>
-                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>
-                    {subtitle}
-                  </div>
-                </div>
-
-                {/* Right side */}
-                {isConnecting ? (
-                  <Loader2 size={16} color="rgba(59,130,246,0.8)" style={{ animation: 'spin 0.7s linear infinite', flexShrink: 0 }} />
-                ) : (
-                  <ChevronRight size={16} color="rgba(255,255,255,0.2)" style={{ flexShrink: 0 }} />
-                )}
-              </button>
-            )
-          })
+                </button>
+              )
+            })
           )}
         </div>
 
-        {/* Error */}
         {error && (
           <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 12, padding: '10px 14px', fontSize: 12, color: 'rgba(239,68,68,0.8)', fontFamily: 'var(--font-sans), Inter, sans-serif', lineHeight: 1.4 }}>
             {error}
           </div>
         )}
 
-        {/* Footer */}
         <div style={{ textAlign: 'center', fontSize: 11, color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-sans), Inter, sans-serif', lineHeight: 1.5, marginTop: -4 }}>
           Make sure your wallet is installed and unlocked
         </div>
 
-        <style>{`
-          @keyframes spin { to { transform: rotate(360deg) } }
-        `}</style>
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     </div>
   )

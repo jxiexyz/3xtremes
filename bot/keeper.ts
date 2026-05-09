@@ -71,7 +71,6 @@ const walletClient = createWalletClient({ chain: arcTestnet, transport: http(), 
 
 const wss = new WebSocketServer({ port: WS_PORT });
 const wsClients = new Set<WebSocket>();
-let currentRoundId: bigint = 0n;
 
 wss.on("connection", (ws) => {
   wsClients.add(ws);
@@ -81,7 +80,6 @@ wss.on("connection", (ws) => {
   if (candleHistory.length > 0) {
     ws.send(JSON.stringify({
       type: "HISTORY",
-      roundId: Number(currentRoundId),
       history: candleHistory
     }));
   }
@@ -243,54 +241,34 @@ async function sendTx(label: string, fn: () => Promise<`0x${string}`>): Promise<
 }
 
 // ─── Candle Pre-computation (same logic as contract) ─────────────────────────
-//
-// Catapult-style: 1 seed → compute all 60 candles off-chain
-// Uses same deterministic formula as VRFConsumer.sol so candles are reproducible
-//
-// Candle = OHLC per second
-// Price movement logic mirrors RoundEngine._calculatePriceMove()
 
 const THRESHOLD_DOWN = 450_000n;
 const THRESHOLD_SIDEWAYS = 550_000n;
 const MOVE_DENOMINATOR = 100_000n;
 
 function computeRandomness(seed: bigint, second: number): bigint {
-  // Derive per-second randomness from seed deterministically
-  // keccak256(seed, second) % 1_000_000
   const encoded = `${seed.toString(16).padStart(64, "0")}${second.toString(16).padStart(64, "0")}`;
-  // Simple deterministic derivation (mirrors what contract would do)
   let h = seed ^ (BigInt(second) * 0x9e3779b97f4a7c15n);
   h = ((h >> 30n) ^ h) * 0xbf58476d1ce4e5b9n;
   h = ((h >> 27n) ^ h) * 0x94d049bb133111ebn;
   h = (h >> 31n) ^ h;
-  return ((h % 1_000_000n) + 1_000_000n) % 1_000_000n; // ensure positive
+  return ((h % 1_000_000n) + 1_000_000n) % 1_000_000n; 
 }
 
 function calcPriceMove(price: number, randomness: bigint, trendBias: number): number {
   const magnitudeSeed = Number(randomness % 100n);
   let magnitude: bigint;
-
-  // INCREASED VOLATILITY - 3XTREMES STYLE
-  if (magnitudeSeed <= 30) magnitude = 10n;       // 0.01%
-  else if (magnitudeSeed <= 60) magnitude = 80n;  // 0.08%
-  else if (magnitudeSeed <= 85) magnitude = 300n; // 0.30%
-  else if (magnitudeSeed <= 96) magnitude = 800n; // 0.80%
-  else magnitude = 3000n;                          // 3.00% EXTREME BLAST
-
+  if (magnitudeSeed <= 30) magnitude = 10n;
+  else if (magnitudeSeed <= 60) magnitude = 80n;
+  else if (magnitudeSeed <= 85) magnitude = 300n;
+  else if (magnitudeSeed <= 96) magnitude = 800n;
+  else magnitude = 3000n;
   const priceMove = Math.max(1, Math.floor((price * Number(magnitude)) / Number(MOVE_DENOMINATOR)));
-
-  // Bias thresholds based on round trend
   const downT = THRESHOLD_DOWN + BigInt(trendBias * 8000);
   const sideT = THRESHOLD_SIDEWAYS + BigInt(trendBias * 8000);
-
-  if (randomness < downT) {
-    return Math.max(1, price - priceMove);
-  } else if (randomness < sideT) {
-    // Tiny jitter even on sideways
-    return price + (Number(randomness % 7n) - 3);
-  } else {
-    return price + priceMove;
-  }
+  if (randomness < downT) return Math.max(1, price - priceMove);
+  else if (randomness < sideT) return price + (Number(randomness % 7n) - 3);
+  else return price + priceMove;
 }
 
 interface Candle {
@@ -299,57 +277,38 @@ interface Candle {
   high: number;
   close: number;
   low: number;
-  price: number; // = close
+  price: number; 
 }
 
 function computeCandles(seed: bigint, startPrice: number): Candle[] {
   const candles: Candle[] = [];
   let price = startPrice;
-
-  // Global drift: -15 to +15 (Subtle bias, not a bulldozer)
   const drift = Number((seed % 31n) - 15n);
-
   for (let s = 0; s < 60; s++) {
     const randomness = computeRandomness(seed, s);
     const open = price;
-    
-    // 1. Pure Volatility: High random noise per second
     const volatility = 150;
     const noise = Number((randomness % BigInt(volatility * 2 + 1)) - BigInt(volatility));
-    
-    // 2. Mean Reversion: If price moves too far from start, pull it back slightly
     const deviation = price - startPrice;
     const gravity = Math.floor(deviation * 0.05);
-    
-    // 3. Combine: Noise + subtle drift - gravity
     const move = noise + drift - gravity;
     const close = Math.max(1, price + move);
-
-    // 4. Ensure Visible Body (No Dojis) but color is random based on move
     const bodySize = Math.abs(close - open);
     const minBody = 25;
     let finalClose = close;
-    if (bodySize < minBody) {
-      finalClose = close >= open ? open + minBody : open - minBody;
-    }
-
-    // 5. Professional Wicks: 30-70% of body size
+    if (bodySize < minBody) finalClose = close >= open ? open + minBody : open - minBody;
     const finalBody = Math.abs(finalClose - open);
     const wickSize = Math.max(15, Math.floor(finalBody * (0.3 + (Number(randomness % 40n) / 100))));
-    
     const high = Math.max(open, finalClose) + wickSize;
     const low = Math.max(1, Math.min(open, finalClose) - wickSize);
-
     candles.push({ second: s, open, high, low, close: finalClose, price: finalClose });
     price = finalClose;
   }
-
   return candles;
 }
 
 // ─── Round Lifecycle ──────────────────────────────────────────────────────────
 
-// --- ASYNC ON-CHAIN TRANSITION LOGIC ---
 let isBackgroundSettling = false;
 
 async function startRoundOnChain() {
@@ -373,12 +332,10 @@ async function startRoundOnChain() {
     log("✅ startRound tx receipt lost but round is active. Continuing...");
   }
 
-  isBackgroundSettling = false; // Unblock trades ASAP
+  isBackgroundSettling = false; 
 
-  // Read the REAL seed from chain and stream with it
   try {
-    currentRoundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
-    const roundId = currentRoundId;
+    const roundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
     const startPrice = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getCurrentPrice" });
     const seed = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getSeed", args: [roundId] });
 
@@ -410,7 +367,7 @@ async function startRound() {
       address: ROUND_ENGINE_ADDRESS,
       abi: ROUND_ENGINE_ABI,
       functionName: "startRound",
-      gas: 3000000n, // Bypass simulation with higher limit
+      gas: 3000000n, 
     })
   );
 
@@ -425,10 +382,7 @@ async function startRound() {
     }
   }
 
-
-  // Read round info + seed from chain
-  currentRoundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
-  const roundId = currentRoundId;
+  const roundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
   const startPrice = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getCurrentPrice" });
   const seed = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getSeed", args: [roundId] });
 
@@ -438,13 +392,11 @@ async function startRound() {
 
   log(`🎰 Round #${roundIdNum} | StartPrice: ${formatPrice(startPrice)} | Seed: ${seedBig}`);
 
-  // Pre-compute all 60 candles from seed
   const candles = computeCandles(seedBig, startPriceNum);
   const finalPrice = candles[candles.length - 1].close;
 
   log(`📊 Pre-computed 60 candles | FinalPrice: ${formatPrice(BigInt(finalPrice))}`);
 
-  // Broadcast round start to all WS clients
   broadcast({
     type: "ROUND_START",
     roundId: roundIdNum,
@@ -453,28 +405,23 @@ async function startRound() {
     totalCandles: candles.length,
   });
 
-  // Stream candles 1 per second
   streamCandles(roundIdNum, candles, finalPrice);
 }
 
 function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
   stopLoop();
-
   let idx = 0;
-
   candleInterval = setInterval(() => {
     if (idx >= candles.length) {
       if (candleInterval) { clearInterval(candleInterval); candleInterval = null; }
       return;
     }
-
     const candle = candles[idx];
     const isLockWindow = candle.second >= 55;
-
     const candleMsg = {
       type: "CANDLE",
       roundId,
-      time: Math.floor(Date.now() / 1000), // Absolute timestamp for chart continuity
+      time: Math.floor(Date.now() / 1000), 
       second: candle.second,
       open: candle.open,
       high: candle.high,
@@ -483,31 +430,13 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
       price: candle.close,
       lockWindow: isLockWindow,
     };
-
-    // Save to history
     candleHistory.push(candleMsg);
     if (candleHistory.length > 200) candleHistory.shift();
-
-    // ── Hybrid DEX: NO per-second on-chain price update ─────────────────────
-    // Price is delivered to the contract JIT (Just-In-Time) only when needed:
-    //   - backendOpen / backendClose: execution price is passed as an argument
-    //   - doLiquidate: price is passed directly to backendLiquidatePosition
-
-    // --- INSTANT LIQUIDATION CHECK (off-chain) ---
     checkAllLiquidations(candle.high, candle.low);
-
     broadcast(candleMsg);
-
-    if (!isLockWindow) {
-      log(`💹 second ${candle.second} | price: ${formatPrice(BigInt(candle.close))}`);
-    } else if (candle.second >= 55) {
-      log(`🔒 second ${candle.second} lock window`);
-    }
-
+    if (!isLockWindow) log(`💹 second ${candle.second} | price: ${formatPrice(BigInt(candle.close))}`);
     idx++;
   }, 1000);
-
-  // Optimistic instant frontend transition
   const settleDelay = candles.length * 1000;
   settleTimeout = setTimeout(() => handleOptimisticRoundEnd(roundId, finalPrice), settleDelay);
 }
@@ -515,36 +444,20 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
 async function handleOptimisticRoundEnd(roundId: number, finalPrice: number) {
   stopLoop();
   isBackgroundSettling = true;
-
-  // 1. Immediately tell frontend the round is settling (clears positions/lines)
   broadcast({ type: "ROUND_SETTLING", roundId, finalPrice });
-
-  // 2. Wait for any in-flight liquidations to complete BEFORE settling on-chain.
-  //    This prevents settleRound from closing a position that should be liquidated,
-  //    which would incorrectly return margin to the user instead of sending it to insurance.
   if (liquidating.size > 0) {
-    log(`⏳ Waiting for ${liquidating.size} pending liquidation(s) before settle...`);
     let waited = 0;
     while (liquidating.size > 0 && waited < 15000) {
       await new Promise(r => setTimeout(r, 500));
       waited += 500;
     }
-    if (liquidating.size > 0) {
-      log(`⚠️ ${liquidating.size} liquidation(s) still pending after 15s — proceeding anyway`);
-      liquidating.clear(); // Clear to avoid blocking settlement forever
-    } else {
-      log(`✅ All liquidations confirmed — proceeding to settle`);
-    }
+    liquidating.clear();
   }
-
-  // 3. Perform on-chain settlement — WAIT for it to succeed before starting next round
-  log(`⚡ Starting background settlement for round #${roundId}...`);
   await settleOnChain(roundId, finalPrice);
 }
 
 async function settleOnChain(roundId: number, finalPrice: number) {
   log(`🏁 Settling round #${roundId} on-chain at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
-
   let attempts = 0;
   while (attempts < 10) {
     const ok = await sendTx("settleRound", () =>
@@ -556,22 +469,15 @@ async function settleOnChain(roundId: number, finalPrice: number) {
         gas: 3000000n,
       })
     );
-
     if (ok) {
-      log(`✅ Round #${roundId} settled on-chain! PnL distributed to traders.`);
-      // Now start new round on-chain, then read REAL seed to stream
+      log(`✅ Round #${roundId} settled on-chain!`);
       await startRoundOnChain();
       return;
     }
-
     attempts++;
-    log(`⏳ Retry settle (${attempts}/10) in 3s...`);
     await new Promise((r) => setTimeout(r, 3000));
   }
-
-  log("❌ Settle gagal 10x — cancel round");
   broadcast({ type: "ROUND_ERROR", roundId, reason: "settle_failed" });
-
   await sendTx("cancelRound", () =>
     walletClient.writeContract({
       address: ROUND_ENGINE_ADDRESS,
@@ -580,29 +486,12 @@ async function settleOnChain(roundId: number, finalPrice: number) {
       args: ["settle_failed_after_10_retries"],
     })
   );
-
   isBackgroundSettling = false;
   setTimeout(startRound, 2000);
 }
 
-// ─── Hybrid DEX: Backend Execution Functions ─────────────────────────────────
-
-/**
- * Open a position on behalf of a user.
- * Called when Frontend sends an OPEN_POSITION WS message.
- */
-async function backendOpen(
-  trader: `0x${string}`,
-  isLong: boolean,
-  margin: bigint,
-  leverage: bigint,
-  price: number
-) {
-  // Block during settle/start to avoid nonce conflicts
-  while (isBackgroundSettling) {
-    await new Promise(r => setTimeout(r, 200));
-  }
-
+async function backendOpen(trader: `0x${string}`, isLong: boolean, margin: bigint, leverage: bigint, price: number) {
+  while (isBackgroundSettling) await new Promise(r => setTimeout(r, 200));
   let attempts = 0;
   while (attempts < 3) {
     try {
@@ -612,42 +501,22 @@ async function backendOpen(
         functionName: "backendOpenPosition",
         args: [trader, isLong, margin, leverage, BigInt(Math.floor(price))],
       });
-      log(`📤 backendOpen tx: ${hash}`);
-
-      // ✅ Konfirmasi LANGSUNG ke frontend setelah hash — tidak tunggu mining
       broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash, margin: margin.toString(), leverage: leverage.toString() });
-
-      // Receipt verification jalan di background (catch revert jika ada)
       publicClient.waitForTransactionReceipt({ hash }).then((receipt) => {
-        if (receipt.status === "success") {
-          log(`✅ Position OPENED on-chain for ${trader} (block ${receipt.blockNumber})`);
-        } else {
-          log(`❌ backendOpen REVERTED for ${trader} — notifying rollback`);
-          broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
-        }
-      }).catch((err: any) => {
-        log(`⚠️ Receipt check error: ${err?.shortMessage || err?.message}`);
+        if (receipt.status === "success") log(`✅ Position OPENED for ${trader}`);
+        else broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
       });
-
       return;
     } catch (err: any) {
       attempts++;
-      log(`⚠️ backendOpen attempt ${attempts}/3 failed: ${err?.shortMessage || err?.message}`);
       if (attempts < 3) await new Promise((r) => setTimeout(r, 2000));
     }
   }
   broadcast({ type: "POSITION_FAILED", trader, reason: "max_retries_exceeded" });
 }
 
-/**
- * Close a position on behalf of a user.
- * Called when Frontend sends a CLOSE_POSITION WS message.
- */
 async function backendClose(positionId: bigint, price: number) {
-  while (isBackgroundSettling) {
-    await new Promise(r => setTimeout(r, 200));
-  }
-
+  while (isBackgroundSettling) await new Promise(r => setTimeout(r, 200));
   let attempts = 0;
   while (attempts < 3) {
     try {
@@ -657,40 +526,24 @@ async function backendClose(positionId: bigint, price: number) {
         functionName: "backendClosePosition",
         args: [positionId, BigInt(Math.floor(price))],
       });
-      log(`📤 backendClose tx: ${hash} | positionId=${positionId}`);
-
-      // ✅ Konfirmasi LANGSUNG ke frontend setelah hash — tidak tunggu mining
       broadcast({ type: "CLOSE_CONFIRMED", positionId: positionId.toString(), price, tx: hash });
-
-      // Receipt verification jalan di background
       publicClient.waitForTransactionReceipt({ hash }).then((receipt) => {
-        if (receipt.status === "success") {
-          log(`✅ Position #${positionId} CLOSED on-chain (block ${receipt.blockNumber})`);
-        } else {
-          log(`❌ backendClose REVERTED for #${positionId} — notifying rollback`);
-          broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "tx_reverted" });
-        }
-      }).catch((err: any) => {
-        log(`⚠️ Receipt check error: ${err?.shortMessage || err?.message}`);
+        if (receipt.status === "success") log(`✅ Position #${positionId} CLOSED`);
+        else broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "tx_reverted" });
       });
-
       return;
     } catch (err: any) {
       attempts++;
-      log(`⚠️ backendClose attempt ${attempts}/3 failed: ${err?.shortMessage || err?.message}`);
       if (attempts < 3) await new Promise((r) => setTimeout(r, 2000));
     }
   }
   broadcast({ type: "CLOSE_FAILED", positionId: positionId.toString(), reason: "max_retries_exceeded" });
 }
 
-// ─── Liquidation Logic ────────────────────────────────────────────────────────
-
 async function checkAllLiquidations(high: number, low: number) {
   if (openPositions.size === 0) return;
   const hiBig = BigInt(Math.floor(high));
   const loBig = BigInt(Math.floor(low));
-
   for (const [id, pos] of openPositions) {
     if (liquidating.has(id)) continue;
     const hit = pos.isLong ? loBig <= pos.liquidationPrice : hiBig >= pos.liquidationPrice;
@@ -701,16 +554,7 @@ async function checkAllLiquidations(high: number, low: number) {
 async function doLiquidate(id: string, pos: any) {
   if (liquidating.has(id)) return;
   liquidating.add(id);
-
-  broadcast({
-    type: "POSITION_LIQUIDATED",
-    positionId: id,
-    trader: pos.trader,
-    liquidationPrice: pos.liquidationPrice.toString(),
-  });
-
-  log(`🔥 Liquidating #${id} | executionPrice=${formatPrice(pos.liquidationPrice)}`);
-
+  broadcast({ type: "POSITION_LIQUIDATED", positionId: id, trader: pos.trader, liquidationPrice: pos.liquidationPrice.toString() });
   let attempts = 0;
   while (attempts < 3) {
     try {
@@ -719,25 +563,18 @@ async function doLiquidate(id: string, pos: any) {
         abi: POSITION_MANAGER_ABI,
         functionName: "backendLiquidatePosition",
         args: [pos.positionId, pos.liquidationPrice],
-        gas: 3000000n, // bypass simulation
+        gas: 3000000n,
       });
-
-      log(`📤 backendLiquidate tx: ${hash}`);
       await publicClient.waitForTransactionReceipt({ hash });
-
       openPositions.delete(id);
       liquidating.delete(id);
-      log(`✅ #${id} liquidated on-chain!`);
       broadcast({ type: "LIQUIDATION_CONFIRMED", positionId: id, tx: hash });
       return;
     } catch (err: any) {
       attempts++;
-      log(`❌ backendLiquidate(#${id}) attempt ${attempts}/3 error: ${err.shortMessage || err.message}`);
       if (attempts < 3) await new Promise(r => setTimeout(r, 2000));
     }
   }
-
-  // If we reach here, all 3 attempts failed
   liquidating.delete(id);
   broadcast({ type: "LIQUIDATION_FAILED", positionId: id, reason: "max_retries_exceeded" });
 }
@@ -747,59 +584,27 @@ function stopLoop() {
   if (settleTimeout) { clearTimeout(settleTimeout); settleTimeout = null; }
 }
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-
 async function init() {
-  log("🤖 3xtremes Keeper Bot (Catapult-style)");
-  log(`👛 Wallet: ${account.address}`);
-  log(`📄 RoundEngine: ${ROUND_ENGINE_ADDRESS}`);
-  log(`📡 WebSocket: ws://localhost:${WS_PORT}`);
-
+  log("🤖 3xtremes Keeper Bot");
   await loadExistingPositions();
   watchEvents();
-
   const active = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
-
   if (active) {
-    const secsRemaining = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getSecondsRemaining" });
     const roundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
     const startPrice = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getCurrentPrice" });
     const seed = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getSeed", args: [roundId] });
-
-    const remaining = Number(secsRemaining as bigint);
     const roundIdNum = Number(roundId);
     const seedBig = seed as bigint;
     const startPriceNum = Number(startPrice as bigint);
-
-    log(`🔄 Round #${roundIdNum} aktif | ${remaining}s sisa | Seed: ${seedBig}`);
-
-    if (remaining <= 5) {
-      log("⏳ Hampir selesai, settle segera...");
-      // Re-compute candles untuk dapet finalPrice
-      const candles = computeCandles(seedBig, startPriceNum);
-      const finalPrice = candles[candles.length - 1].close;
-      settleTimeout = setTimeout(() => handleOptimisticRoundEnd(roundIdNum, finalPrice), remaining * 1000);
-    } else {
-      // Resume streaming dari second yang tersisa
-      const elapsed = 60 - remaining;
-      const candles = computeCandles(seedBig, startPriceNum);
-      const finalPrice = candles[candles.length - 1].close;
-
-      log(`▶️  Resume streaming dari second ${elapsed}`);
-      const remainingCandles = candles.slice(elapsed);
-
-      broadcast({ type: "ROUND_RESUME", roundId: roundIdNum, elapsed, startPrice: startPriceNum });
-      streamCandles(roundIdNum, remainingCandles, finalPrice);
-    }
+    const candles = computeCandles(seedBig, startPriceNum);
+    const finalPrice = candles[candles.length - 1].close;
+    streamCandles(roundIdNum, candles, finalPrice);
   } else {
-    log("💤 Tidak ada round aktif, mulai sekarang...");
     await startRound();
   }
 }
 
-// ─── Shutdown ─────────────────────────────────────────────────────────────────
+init();
 
-process.on("SIGINT", () => { log("🛑 Shutdown"); stopLoop(); wss.close(); process.exit(0); });
-process.on("SIGTERM", () => { log("🛑 Shutdown"); stopLoop(); wss.close(); process.exit(0); });
-
-init().catch((err) => { console.error("Fatal:", err); process.exit(1); });
+process.on("SIGINT", () => { stopLoop(); wss.close(); process.exit(0); });
+process.on("SIGTERM", () => { stopLoop(); wss.close(); process.exit(0); });

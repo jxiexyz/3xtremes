@@ -10,7 +10,7 @@ import ConnectWalletModal from '../../components/wallet/ConnectWalletModal'
 import WithdrawModal from '../../components/wallet/WithdrawModal'
 import Link from 'next/link'
 import styles from './trade.module.css'
-import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3, Activity, Hexagon } from 'lucide-react'
+import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3, Activity } from 'lucide-react'
 
 // --- UX State Components ---
 function SkeletonLine({ width = '100%', height = '16px', className = '' }: { width?: string, height?: string, className?: string }) {
@@ -29,12 +29,16 @@ function EmptyState({ icon: Icon, title, desc }: { icon: any, title: string, des
   )
 }
 
-function Counter({ value, decimals = 2, className = "", prefix = "", suffix = "", style = {} }: { value: number, decimals?: number, className?: string, prefix?: string, suffix?: string, style?: any }) {
+function Counter({ value, decimals = 2, className = "", prefix = "", suffix = "", style = {}, duration = 600, flashOnChange = false }: { value: number, decimals?: number, className?: string, prefix?: string, suffix?: string, style?: any, duration?: number, flashOnChange?: boolean }) {
   const [isMounted, setIsMounted] = useState(false);
   const [displayValue, setDisplayValue] = useState(value);
+  const [flashColor, setFlashColor] = useState<string | null>(null);
+  const [isPopping, setIsPopping] = useState(false);
   const startTimeRef = useRef<number | null>(null);
   const startValueRef = useRef(value);
-  const duration = 600; // ms
+  const prevValueRef = useRef(value);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -43,6 +47,21 @@ function Counter({ value, decimals = 2, className = "", prefix = "", suffix = ""
   useEffect(() => {
     if (!isMounted) return;
     if (startValueRef.current === value) return;
+    
+    // Detect direction for flash color + pop
+    if (flashOnChange && value !== prevValueRef.current) {
+      const direction = value > prevValueRef.current ? 'up' : 'down';
+      setFlashColor(direction === 'up' ? '#10b981' : '#ef4444');
+      setIsPopping(true);
+      // Clear any existing timeouts
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      if (popTimeoutRef.current) clearTimeout(popTimeoutRef.current);
+      // Scale back to normal after a brief pop
+      popTimeoutRef.current = setTimeout(() => setIsPopping(false), 300);
+      // Fade color back to normal after animation completes
+      flashTimeoutRef.current = setTimeout(() => setFlashColor(null), duration + 400);
+    }
+    prevValueRef.current = value;
     
     startValueRef.current = displayValue;
     startTimeRef.current = null;
@@ -73,8 +92,18 @@ function Counter({ value, decimals = 2, className = "", prefix = "", suffix = ""
     return parts.join('.');
   };
 
+  const mergedStyle = {
+    ...style,
+    display: 'inline-block',
+    transform: isPopping ? 'scale(1.12)' : 'scale(1)',
+    transition: isPopping 
+      ? 'color 0.15s ease-out, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)' 
+      : 'color 0.6s ease-out, transform 0.3s ease-out',
+    ...(flashColor ? { color: flashColor } : {}),
+  };
+
   if (!isMounted) return <span className={className} style={style}>{prefix}{formatNumber(value)}{suffix}</span>;
-  return <span className={className} style={style}>{prefix}{formatNumber(displayValue)}{suffix}</span>;
+  return <span className={className} style={mergedStyle}>{prefix}{formatNumber(displayValue)}{suffix}</span>;
 }
 
 
@@ -117,7 +146,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
     if (!chartContainerRef.current) return;
     const chart = createChart(chartContainerRef.current, {
       layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: 'rgba(255, 255, 255, 0.4)' },
-      grid: { vertLines: { color: 'rgba(255, 255, 255, 0.04)' }, horzLines: { color: 'rgba(255, 255, 255, 0.04)' } },
+      grid: { vertLines: { color: 'rgba(255, 255, 255, 0.08)' }, horzLines: { color: 'rgba(255, 255, 255, 0.08)' } },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: { width: 1, color: 'rgba(255,255,255,0.3)', style: 3, labelBackgroundColor: '#1e293b' },
@@ -645,7 +674,7 @@ export default function TradePage() {
     optimisticPositions.some(p => !p._txConfirmed) || 
     closingPositionIds.size > 0 || 
     openPositions.some((p: any) => wipedOutIds.has(p.positionId.toString()) && !p.isLiquidated) ||
-    roundStatus === "Settling Round...";
+    (roundStatus === "Settling Round..." && openPositions.length > 0);
 
   useEffect(() => {
     // Mock loading state delay to show skeletons
@@ -717,8 +746,13 @@ export default function TradePage() {
             // Bot push: optimistic liquidation lock
             updateWipedOutIds(msg.positionId.toString());
             liquidationFiredRef.current.add(msg.positionId.toString());
-            // Clear from optimistic array if it was there
-            setOptimisticPositions(prev => prev.filter(p => !p._optimistic));
+            // Mark matching optimistic position as liquidated instead of removing it
+            // This prevents the jitter where position disappears then reappears as liquidated
+            setOptimisticPositions(prev => prev.map(p => 
+              p.positionId?.toString() === msg.positionId?.toString()
+                ? { ...p, _liquidated: true }
+                : p
+            ));
 
           } else if (msg.type === "CLOSE_CONFIRMED") {
             console.log('✅ CLOSE_CONFIRMED from bot:', msg.tx, 'pnl:', msg.realizedPnL);
@@ -1010,27 +1044,25 @@ export default function TradePage() {
           </Link>
 
           {/* Epoch Total Badge */}
-          {currentEpoch !== null && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.005) 100%)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.2)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              borderRadius: 10, padding: '0 16px', height: 38,
-              color: '#fff',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: 0.4 }}>
-                <Hexagon size={13} strokeWidth={2.5} />
-                <span style={{ fontSize: 10, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, letterSpacing: '0.06em' }}>EPOCH</span>
-              </div>
-              
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 15, fontWeight: 500, letterSpacing: '-0.02em', color: 'rgba(255,255,255,0.95)' }}>#{currentEpoch}</span>
-              </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.005) 100%)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.2)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderRadius: 10, padding: '0 16px', height: 38,
+            color: '#fff',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: 0.4 }}>
+              <LayoutGrid size={13} strokeWidth={2.5} />
+              <span style={{ fontSize: 10, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 600, letterSpacing: '0.06em' }}>EPOCH</span>
             </div>
-          )}
+            
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 15, fontWeight: 500, letterSpacing: '-0.02em', color: 'rgba(255,255,255,0.95)' }}>#{currentEpoch !== null ? currentEpoch : '--'}</span>
+            </div>
+          </div>
 
           {/* Total Volume Badge - Premium Stealth Design */}
           <div style={{
@@ -1066,7 +1098,7 @@ export default function TradePage() {
               <div className={styles.tbBal}>
                 <span className={styles.tbBalLabel}>USCC</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Counter value={displayBalance} decimals={2} />
+                  <Counter value={displayBalance} decimals={2} flashOnChange />
                   {isBalanceSyncing && <Loader2 size={12} className="animate-spin text-emerald-400" />}
                 </span>
               </div>
