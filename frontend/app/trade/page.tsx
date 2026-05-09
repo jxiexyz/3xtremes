@@ -597,6 +597,18 @@ export default function TradePage() {
   const [isCandle, setIsCandle] = useState(true)
   const [countdown, setCountdown] = useState(60)
   const [currentEpoch, setCurrentEpoch] = useState<number | null>(null)
+
+  // Load epoch from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('3xtremes_current_epoch');
+    if (saved) setCurrentEpoch(parseInt(saved));
+  }, []);
+
+  const updateEpoch = (id: number) => {
+    setCurrentEpoch(id);
+    localStorage.setItem('3xtremes_current_epoch', id.toString());
+  };
+
   const [roundStatus, setRoundStatus] = useState<string>("Active")
   const [settlingCountdown, setSettlingCountdown] = useState(0)
   const settlingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -739,6 +751,7 @@ export default function TradePage() {
             }));
             setCandles(historyCandles);
             setRoundStatus("Active");
+            if (msg.roundId) updateEpoch(msg.roundId);
 
           } else if (msg.type === "ROUND_SETTLING") {
             setRoundStatus("Settling Round...");
@@ -764,14 +777,14 @@ export default function TradePage() {
               });
             }, 1000);
           } else if (msg.type === "ROUND_START") {
-            if (msg.roundId) setCurrentEpoch(msg.roundId);
+            if (msg.roundId) updateEpoch(msg.roundId);
             setCountdown(60);
             setRoundStatus("Active");
             setSettlingCountdown(0);
             if (settlingTimerRef.current) clearInterval(settlingTimerRef.current);
 
           } else if (msg.type === "CANDLE") {
-            if (msg.roundId) setCurrentEpoch(msg.roundId);
+            if (msg.roundId) updateEpoch(msg.roundId);
             const open  = Number(msg.open)  / 1e5;
             const high  = Number(msg.high)  / 1e5;
             const low   = Number(msg.low)   / 1e5;

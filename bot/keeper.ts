@@ -71,6 +71,7 @@ const walletClient = createWalletClient({ chain: arcTestnet, transport: http(), 
 
 const wss = new WebSocketServer({ port: WS_PORT });
 const wsClients = new Set<WebSocket>();
+let currentRoundId: bigint = 0n;
 
 wss.on("connection", (ws) => {
   wsClients.add(ws);
@@ -80,6 +81,7 @@ wss.on("connection", (ws) => {
   if (candleHistory.length > 0) {
     ws.send(JSON.stringify({
       type: "HISTORY",
+      roundId: Number(currentRoundId),
       history: candleHistory
     }));
   }
@@ -375,7 +377,8 @@ async function startRoundOnChain() {
 
   // Read the REAL seed from chain and stream with it
   try {
-    const roundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
+    currentRoundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
+    const roundId = currentRoundId;
     const startPrice = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getCurrentPrice" });
     const seed = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getSeed", args: [roundId] });
 
@@ -424,7 +427,8 @@ async function startRound() {
 
 
   // Read round info + seed from chain
-  const roundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
+  currentRoundId = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "currentRoundId" });
+  const roundId = currentRoundId;
   const startPrice = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getCurrentPrice" });
   const seed = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "getSeed", args: [roundId] });
 
