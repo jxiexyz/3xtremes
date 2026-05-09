@@ -67,8 +67,14 @@ function Counter({ value, decimals = 2, className = "", prefix = "", suffix = ""
     requestAnimationFrame(animate);
   }, [value, isMounted]);
 
-  if (!isMounted) return <span className={className} style={style}>{prefix}{value.toFixed(decimals)}{suffix}</span>;
-  return <span className={className} style={style}>{prefix}{displayValue.toFixed(decimals)}{suffix}</span>;
+  const formatNumber = (val: number) => {
+    const parts = val.toFixed(decimals).split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return parts.join('.');
+  };
+
+  if (!isMounted) return <span className={className} style={style}>{prefix}{formatNumber(value)}{suffix}</span>;
+  return <span className={className} style={style}>{prefix}{formatNumber(displayValue)}{suffix}</span>;
 }
 
 
