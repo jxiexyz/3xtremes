@@ -1018,10 +1018,7 @@ export default function TradePage() {
               <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 10, fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 500 }}>USCC</span>
             </div>
 
-            {/* Tiny live pulse indicator */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 2 }}>
-              <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'rgba(255,255,255,0.3)', animation: 'pulse 2s infinite' }} />
-            </div>
+
           </div>
 
           <div className={styles.tbSpacer} />
