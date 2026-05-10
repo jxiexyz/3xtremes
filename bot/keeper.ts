@@ -484,6 +484,20 @@ async function handleOptimisticRoundEnd(roundId: number, finalPrice: number) {
 
 async function settleOnChain(roundId: number, finalPrice: number) {
   log(`🏁 Settling round #${roundId} on-chain at price ${formatPrice(BigInt(Math.floor(finalPrice)))}...`);
+
+  // Check if round is still active before trying to settle
+  try {
+    const stillActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
+    if (!stillActive) {
+      log(`⚠️ Round #${roundId} already settled/expired on-chain. Skipping settleRound, starting next round...`);
+      broadcast({ type: "ROUND_SETTLED", roundId, finalPrice });
+      await startRoundOnChain();
+      return;
+    }
+  } catch (err: any) {
+    log(`⚠️ Could not read roundActive: ${err?.message}`);
+  }
+
   let attempts = 0;
   while (attempts < 10) {
     let settleTxHash: `0x${string}` | null = null;
@@ -500,23 +514,42 @@ async function settleOnChain(roundId: number, finalPrice: number) {
     });
     if (ok && settleTxHash) {
       log(`✅ Round #${roundId} settled on-chain! TX: ${settleTxHash}`);
-      // Broadcast settle TX so frontend can link to ArcScan
       broadcast({ type: "ROUND_SETTLED", roundId, finalPrice, settleTx: settleTxHash });
       await startRoundOnChain(settleTxHash);
       return;
     }
+
+    // After each failed attempt, check if round somehow already settled
+    try {
+      const stillActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
+      if (!stillActive) {
+        log(`⚠️ Round #${roundId} no longer active after settle attempt. Proceeding to next round.`);
+        broadcast({ type: "ROUND_SETTLED", roundId, finalPrice });
+        await startRoundOnChain();
+        return;
+      }
+    } catch {}
+
     attempts++;
     await new Promise((r) => setTimeout(r, 3000));
   }
   broadcast({ type: "ROUND_ERROR", roundId, reason: "settle_failed" });
-  await sendTx("cancelRound", () =>
-    walletClient.writeContract({
-      address: ROUND_ENGINE_ADDRESS,
-      abi: ROUND_ENGINE_ABI,
-      functionName: "cancelRound",
-      args: ["settle_failed_after_10_retries"],
-    })
-  );
+  // Only cancelRound if round is still active
+  try {
+    const stillActive = await publicClient.readContract({ address: ROUND_ENGINE_ADDRESS, abi: ROUND_ENGINE_ABI, functionName: "roundActive" });
+    if (stillActive) {
+      await sendTx("cancelRound", () =>
+        walletClient.writeContract({
+          address: ROUND_ENGINE_ADDRESS,
+          abi: ROUND_ENGINE_ABI,
+          functionName: "cancelRound",
+          args: ["settle_failed_after_10_retries"],
+        })
+      );
+    } else {
+      log(`ℹ️ Round already inactive, skipping cancelRound.`);
+    }
+  } catch {}
   isBackgroundSettling = false;
   setTimeout(startRound, 2000);
 }
