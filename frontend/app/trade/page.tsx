@@ -546,19 +546,8 @@ export default function TradePage() {
     return !hasRealPos && op._txConfirmed && !wipedOutIds.has(op.positionId.toString());
   });
 
-  // Total trading volume (GLOBAL) - seeded with a realistic startup number, then accumulates via WS
+  // Total trading volume (GLOBAL) - sourced from server via WebSocket, same for all clients
   const [totalVolume, setTotalVolume] = useState(0);
-
-  // Load persisted volume on mount, or seed with 1.25M USCC for "startup vibe"
-  useEffect(() => {
-    const saved = localStorage.getItem('3xtremes_global_volume');
-    if (saved) {
-      setTotalVolume(parseFloat(saved) || 1258400);
-    } else {
-      setTotalVolume(1258400); // Initial global volume seed
-      localStorage.setItem('3xtremes_global_volume', '1258400');
-    }
-  }, []);
 
   const fmtVol = (v: number) => {
     if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
@@ -721,14 +710,9 @@ export default function TradePage() {
           if (msg.type === "POSITION_CONFIRMED") {
             console.log('✅ POSITION_CONFIRMED from bot:', msg.tx);
 
-            // Add to global volume instantly
-            if (msg.margin && msg.leverage) {
-              const tradeVol = (Number(msg.margin) / 1e6) * Number(msg.leverage);
-              setTotalVolume(prev => {
-                const next = prev + tradeVol;
-                localStorage.setItem('3xtremes_global_volume', next.toString());
-                return next;
-              });
+            // Update volume from server's authoritative value
+            if (msg.totalVolume !== undefined) {
+              setTotalVolume(msg.totalVolume);
             }
             if (msg.trader?.toLowerCase() === address?.toLowerCase()) {
               // Fetch latest blockchain state BEFORE removing loading spinners
@@ -801,6 +785,12 @@ export default function TradePage() {
             setCandles(historyCandles);
             setRoundStatus("Active");
             if (msg.roundId) updateEpoch(msg.roundId);
+            // Sync volume from server on initial connect
+            if (msg.totalVolume !== undefined) setTotalVolume(msg.totalVolume);
+
+          } else if (msg.type === "VOLUME_SYNC") {
+            // Server sends this when no candle history yet but volume exists
+            if (msg.totalVolume !== undefined) setTotalVolume(msg.totalVolume);
 
           } else if (msg.type === "ROUND_SETTLING") {
             setRoundStatus("Settling Round...");

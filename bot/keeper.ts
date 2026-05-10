@@ -76,12 +76,16 @@ wss.on("connection", (ws) => {
   wsClients.add(ws);
   log(`🔌 WS client connected (total: ${wsClients.size})`);
 
-  // Send history on connect
+  // Send history + current global volume on connect so all clients sync
   if (candleHistory.length > 0) {
     ws.send(JSON.stringify({
       type: "HISTORY",
-      history: candleHistory
+      history: candleHistory,
+      totalVolume,
     }));
+  } else {
+    // No history yet but still send volume so new clients are synced
+    ws.send(JSON.stringify({ type: "VOLUME_SYNC", totalVolume }));
   }
 
   // Heartbeat to keep connection alive
@@ -149,6 +153,7 @@ let settleTimeout: ReturnType<typeof setTimeout> | null = null;
 let candleHistory: any[] = [];
 let openPositions = new Map<string, any>();
 let liquidating = new Set<string>();
+let totalVolume = 1258400; // Seeded baseline, accumulates across all sessions
 
 async function watchEvents() {
   log("👀 Watching PositionOpened & PositionClosed events...");
@@ -509,7 +514,9 @@ async function backendOpen(trader: `0x${string}`, isLong: boolean, margin: bigin
         functionName: "backendOpenPosition",
         args: [trader, isLong, margin, leverage, BigInt(Math.floor(price))],
       });
-      broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash, margin: margin.toString(), leverage: leverage.toString() });
+      const tradeVol = (Number(margin) / 1e6) * Number(leverage);
+      totalVolume += tradeVol;
+      broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash, margin: margin.toString(), leverage: leverage.toString(), totalVolume });
       publicClient.waitForTransactionReceipt({ hash }).then((receipt) => {
         if (receipt.status === "success") log(`✅ Position OPENED for ${trader}`);
         else broadcast({ type: "POSITION_FAILED", trader, reason: "tx_reverted" });
