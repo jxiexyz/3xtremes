@@ -628,6 +628,19 @@ export default function TradePage() {
   const [currentEpoch, setCurrentEpoch] = useState<number | null>(null)
   const [epochTxInfo, setEpochTxInfo] = useState<{ settleTx?: string; startTx?: string; roundId?: number } | null>(null)
   const [showEpochPopup, setShowEpochPopup] = useState(false)
+  const epochPopupRef = useRef<HTMLDivElement>(null)
+
+  // Close epoch popup when clicking anywhere outside
+  useEffect(() => {
+    if (!showEpochPopup) return;
+    const handler = (e: MouseEvent) => {
+      if (epochPopupRef.current && !epochPopupRef.current.contains(e.target as Node)) {
+        setShowEpochPopup(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showEpochPopup]);
 
   // Load epoch from localStorage on mount
   useEffect(() => {
@@ -1081,14 +1094,8 @@ export default function TradePage() {
 
             {/* Epoch Verification Popup */}
             {showEpochPopup && (
-              <>
-                {/* Backdrop */}
-                <div
-                  onClick={e => { e.stopPropagation(); setShowEpochPopup(false); }}
-                  style={{ position: 'fixed', inset: 0, zIndex: 998 }}
-                />
-                <div
-                  onClick={e => e.stopPropagation()}
+            <div
+                  ref={epochPopupRef}
                   style={{
                     position: 'absolute', top: 'calc(100% + 10px)', left: 0,
                     zIndex: 999,
@@ -1106,7 +1113,6 @@ export default function TradePage() {
                   {/* Header */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px rgba(16,185,129,0.6)', animation: 'pulse 2s infinite' }} />
                       <span style={{ fontFamily: 'var(--font-sans), Inter, sans-serif', fontWeight: 700, fontSize: 12, color: '#fff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>On-Chain Verification</span>
                     </div>
                     <span style={{ fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>#{currentEpoch ?? '--'}</span>
@@ -1176,7 +1182,6 @@ export default function TradePage() {
                     TX hashes are updated each epoch. Click any hash to verify on ArcScan.
                   </div>
                 </div>
-              </>
             )}
           </div>
 
