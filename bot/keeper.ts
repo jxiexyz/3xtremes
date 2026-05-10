@@ -3,6 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { defineChain } from "viem";
 import { WebSocketServer, WebSocket } from "ws";
 import * as dotenv from "dotenv";
+import { readFileSync, writeFileSync } from "fs";
 
 dotenv.config();
 
@@ -146,6 +147,23 @@ function broadcast(data: object) {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+const VOLUME_FILE = "volume.dat";
+const VOLUME_SEED = 1258400;
+
+function loadVolume(): number {
+  try {
+    const raw = readFileSync(VOLUME_FILE, "utf8").trim();
+    const val = parseFloat(raw);
+    return isNaN(val) ? VOLUME_SEED : val;
+  } catch {
+    return VOLUME_SEED; // File doesn't exist yet, use seed
+  }
+}
+
+function saveVolume(v: number) {
+  try { writeFileSync(VOLUME_FILE, v.toString()); } catch {}
+}
+
 let isSettling = false;
 let isStarting = false;
 let candleInterval: ReturnType<typeof setInterval> | null = null;
@@ -153,7 +171,7 @@ let settleTimeout: ReturnType<typeof setTimeout> | null = null;
 let candleHistory: any[] = [];
 let openPositions = new Map<string, any>();
 let liquidating = new Set<string>();
-let totalVolume = 1258400; // Seeded baseline, accumulates across all sessions
+let totalVolume = loadVolume(); // Read from file on startup
 
 async function watchEvents() {
   log("👀 Watching PositionOpened & PositionClosed events...");
@@ -516,6 +534,7 @@ async function backendOpen(trader: `0x${string}`, isLong: boolean, margin: bigin
       });
       const tradeVol = (Number(margin) / 1e6) * Number(leverage);
       totalVolume += tradeVol;
+      saveVolume(totalVolume); // Persist to disk so restarts don't reset volume
       broadcast({ type: "POSITION_CONFIRMED", trader, isLong, price, tx: hash, margin: margin.toString(), leverage: leverage.toString(), totalVolume });
       publicClient.waitForTransactionReceipt({ hash }).then((receipt) => {
         if (receipt.status === "success") log(`✅ Position OPENED for ${trader}`);
