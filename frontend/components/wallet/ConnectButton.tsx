@@ -9,7 +9,12 @@ export default function ConnectButton({ onConnectClick }: { onConnectClick?: () 
   const { disconnect } = useDisconnect()
   const [showMenu, setShowMenu] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -28,16 +33,24 @@ export default function ConnectButton({ onConnectClick }: { onConnectClick?: () 
     setTimeout(() => setCopied(false), 2000)
   }
 
+  if (!mounted) return null
+
   if (isConnected && address) {
     return (
       <div style={{ position: 'relative', zIndex: 9999 }} ref={menuRef}>
         <div
-          style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, padding:'6px 12px', cursor:'pointer', transition: 'background 0.2s' }}
+          style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, height: 36, padding:'0 12px', cursor:'pointer' }}
           onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
-          onMouseOver={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-          onMouseOut={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
+          onMouseOver={e => {
+            const span = e.currentTarget.querySelector('span');
+            if (span) span.style.color = '#fff';
+          }}
+          onMouseOut={e => {
+            const span = e.currentTarget.querySelector('span');
+            if (span) span.style.color = 'rgba(255,255,255,0.8)';
+          }}
         >
-          <span style={{ fontSize:12, fontWeight: 600, color:'rgba(255,255,255,0.8)', fontFamily:'JetBrains Mono,monospace' }}>
+          <span style={{ fontSize:12, fontWeight: 600, color:'rgba(255,255,255,0.8)', fontFamily:'JetBrains Mono,monospace', transition: 'color 0.2s' }}>
             {address.slice(0,6)}…{address.slice(-4)}
           </span>
           <span style={{ width:6, height:6, borderRadius:'50%', background:'#10b981', display:'inline-block', boxShadow:'0 0 8px rgba(16,185,129,0.6)' }} />
@@ -77,7 +90,7 @@ export default function ConnectButton({ onConnectClick }: { onConnectClick?: () 
   return (
     <button
       onClick={() => onConnectClick ? onConnectClick() : null}
-      style={{ padding:'6px 16px', background:'#2563eb', color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:12, cursor:'pointer', fontFamily:'Inter Tight,Inter,sans-serif', boxShadow:'0 0 16px rgba(37,99,235,0.4)', transition:'all 0.2s' }}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 36, padding:'0 16px', background:'#2563eb', color:'#fff', border:'none', borderRadius:10, fontWeight:600, fontSize:12, cursor:'pointer', fontFamily:'Inter, sans-serif', boxShadow:'0 0 16px rgba(37,99,235,0.4)', transition:'all 0.2s' }}
       onMouseOver={e => (e.currentTarget.style.background = '#3b82f6')}
       onMouseOut={e => (e.currentTarget.style.background = '#2563eb')}
     >

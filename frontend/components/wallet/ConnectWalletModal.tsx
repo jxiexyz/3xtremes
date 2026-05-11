@@ -163,19 +163,29 @@ export default function ConnectWalletModal({ onClose }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '12px 0' }}>
             {step === 'done' ? (
               <>
-                <div style={{
-                  width: 56, height: 56, borderRadius: '50%',
-                  background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  animation: 'iosPop 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards'
-                }}>
-                  <ShieldCheck size={26} color="#10b981" style={{ filter: 'drop-shadow(0 0 8px rgba(16,185,129,0.4))' }} />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56, margin: '0 auto' }}>
+                  {/* Ripple Ring */}
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '50%',
+                    border: '2px solid rgba(16,185,129,0.6)',
+                    animation: 'successRipple 1.2s ease-out forwards'
+                  }} />
+                  {/* Main Circle */}
+                  <div style={{
+                    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '50%',
+                    background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    animation: 'successPop 0.5s cubic-bezier(0.17, 0.89, 0.32, 1.28) forwards',
+                    zIndex: 1
+                  }}>
+                    <ShieldCheck size={26} color="#10b981" />
+                  </div>
                 </div>
-                <div style={{ textAlign: 'center' }}>
+                <div style={{ textAlign: 'center', animation: 'iosFadeIn 0.4s ease-out forwards' }}>
                   <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', fontFamily: 'var(--font-sans), Inter, sans-serif', letterSpacing: '-0.02em' }}>
                     Verified
                   </div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--font-sans), Inter, sans-serif', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'var(--font-sans), Inter, sans-serif', marginTop: 4 }}>
                     {address?.slice(0, 6)}...{address?.slice(-4)}
                   </div>
                 </div>
@@ -186,8 +196,14 @@ export default function ConnectWalletModal({ onClose }: Props) {
                   width: 56, height: 56, borderRadius: '50%',
                   background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.15)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  position: 'relative', overflow: 'hidden'
                 }}>
-                  <Fingerprint size={26} color="#3b82f6" style={{ filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.4))' }} />
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, height: '50%',
+                    background: 'linear-gradient(to bottom, transparent, rgba(59,130,246,0.5), rgba(59,130,246,0.8), transparent)',
+                    animation: 'scanline 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite'
+                  }} />
+                  <Fingerprint size={26} color="#3b82f6" style={{ filter: 'drop-shadow(0 0 8px rgba(59,130,246,0.6))', position: 'relative', zIndex: 1 }} />
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', fontFamily: 'var(--font-sans), Inter, sans-serif', letterSpacing: '-0.02em' }}>
@@ -220,7 +236,22 @@ export default function ConnectWalletModal({ onClose }: Props) {
             >Try Again</button>
           )}
 
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+          <style>{`
+            @keyframes spin { to { transform: rotate(360deg) } }
+            @keyframes scanline { 
+              0% { transform: translateY(-150%) } 
+              100% { transform: translateY(250%) } 
+            }
+            @keyframes successPop {
+              0% { transform: scale(0.8); opacity: 0; }
+              50% { transform: scale(1.1); opacity: 1; }
+              100% { transform: scale(1); opacity: 1; }
+            }
+            @keyframes successRipple {
+              0% { transform: scale(0.8); opacity: 1; border-width: 2px; }
+              100% { transform: scale(2.2); opacity: 0; border-width: 1px; }
+            }
+          `}</style>
         </div>
       </div>
     )

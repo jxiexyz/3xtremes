@@ -10,7 +10,8 @@ import ConnectWalletModal from '../../components/wallet/ConnectWalletModal'
 import WithdrawModal from '../../components/wallet/WithdrawModal'
 import Link from 'next/link'
 import styles from './trade.module.css'
-import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3, Activity, Droplet } from 'lucide-react'
+import ShareCardModal from '../../components/ShareCard'
+import { LayoutGrid, TrendingUp, Gem, ArrowUpRight, ArrowDownRight, Wallet, Settings, HelpCircle, CheckCircle2, Loader2, BarChart3, Activity, Droplet, Search, Star, History, Sun, Moon, Camera } from 'lucide-react'
 
 // --- UX State Components ---
 function SkeletonLine({ width = '100%', height = '16px', className = '' }: { width?: string, height?: string, className?: string }) {
@@ -19,12 +20,12 @@ function SkeletonLine({ width = '100%', height = '16px', className = '' }: { wid
 
 function EmptyState({ icon: Icon, title, desc }: { icon: any, title: string, desc: string }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[140px] text-center px-4 opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]">
-      <div className="w-10 h-10 rounded-full bg-white/[0.03] border border-white/[0.05] flex items-center justify-center mb-3">
-        <Icon size={18} className="text-white/40" />
+    <div className="flex flex-col items-center justify-center h-full py-12 text-center px-4">
+      <div className="mb-5 text-white/30">
+        <Icon size={56} strokeWidth={1.5} />
       </div>
-      <div className="text-sm font-semibold text-white/80 mb-1">{title}</div>
-      <div className="text-xs text-white/40 max-w-[200px] leading-relaxed">{desc}</div>
+      <div className="text-[15px] font-bold text-white/90 mb-2">{title}</div>
+      <div className="text-[13px] text-white/40 font-medium">{desc}</div>
     </div>
   )
 }
@@ -134,13 +135,33 @@ function seedCandles(n: number): Candle[] {
   return list
 }
 
-function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[], isCandle: boolean, positions: any[], showLines: boolean }) {
+function TradingChart({ data, isCandle, positions, showLines, isLightMode }: { data: Candle[], isCandle: boolean, positions: any[], showLines: boolean, isLightMode?: boolean }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<any>(null);
   const priceLinesRef = useRef<any[]>([]);
   const volumeSeriesRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (chartRef.current) {
+      chartRef.current.applyOptions({
+        layout: { 
+          textColor: isLightMode ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.4)' 
+        },
+        grid: {
+          vertLines: { color: isLightMode ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)' },
+          horzLines: { color: isLightMode ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)' }
+        },
+        timeScale: {
+          borderColor: isLightMode ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+        },
+        rightPriceScale: {
+          borderColor: isLightMode ? 'rgba(0, 0, 0, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+        }
+      });
+    }
+  }, [isLightMode]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -241,7 +262,18 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
     if (data.length > 0) {
       const seen = new Set<number>();
       const validData = data
-        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time) && !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
+        .filter(d => {
+          if (!d) return false;
+          const { time, open, high, low, close } = d;
+          return (
+            typeof time === 'number' && isFinite(time) &&
+            open != null && isFinite(Number(open)) &&
+            high != null && isFinite(Number(high)) &&
+            low  != null && isFinite(Number(low))  &&
+            close != null && isFinite(Number(close)) &&
+            high >= low
+          );
+        })
         .sort((a, b) => a.time - b.time)
         .filter(d => {
           if (seen.has(d.time)) return false;
@@ -251,7 +283,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
       
       if (validData.length > 0) {
         if (isCandle) {
-          series.setData(validData as any);
+          series.setData(validData.map((d: any) => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })) as any);
         } else {
           series.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
         }
@@ -264,7 +296,18 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
     if (seriesRef.current && data.length > 0) {
       const seen = new Set<number>();
       const validData = data
-        .filter(d => d && typeof d.time === 'number' && !isNaN(d.time) && !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
+        .filter(d => {
+          if (!d) return false;
+          const { time, open, high, low, close } = d;
+          return (
+            typeof time === 'number' && isFinite(time) &&
+            open != null && isFinite(Number(open)) &&
+            high != null && isFinite(Number(high)) &&
+            low  != null && isFinite(Number(low))  &&
+            close != null && isFinite(Number(close)) &&
+            high >= low
+          );
+        })
         .sort((a, b) => a.time - b.time)
         .filter(d => {
           if (seen.has(d.time)) return false;
@@ -274,7 +317,7 @@ function TradingChart({ data, isCandle, positions, showLines }: { data: Candle[]
 
       if (validData.length > 0) {
         if (isCandle) {
-          seriesRef.current.setData(validData as any);
+          seriesRef.current.setData(validData.map((d: any) => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })) as any);
         } else {
           seriesRef.current.setData(validData.map((d: any) => ({ time: d.time, value: d.close })) as any);
         }
@@ -506,6 +549,7 @@ export default function TradePage() {
   const [closeConfirmPos, setCloseConfirmPos] = useState<any | null>(null);
 
   const [wipedOutIds, setWipedOutIds] = useState<Set<string>>(new Set());
+  const [marketSearch, setMarketSearch] = useState<string>('');
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -542,6 +586,14 @@ export default function TradePage() {
   // Optimistic positions should ONLY be shown if the trader does NOT have a real open position yet.
   // We check against `allPositions` (not `openPositions`) so that closing positions still suppress the optimistic ghost.
   const visibleOptimisticPositions = optimisticPositions.filter(op => {
+    // If this optimistic position was liquidated, keep showing it as a placeholder
+    // until the real on-chain position is confirmed liquidated (prevents flicker)
+    if (op._liquidated) {
+      const realPos = allPositions.find((p: any) => p.isOpen && p.trader?.toLowerCase() === op.trader?.toLowerCase());
+      // Hide only when the real position is also gone (chain confirmed liquidation)
+      const chainConfirmedLiq = allPositions.some((p: any) => !p.isOpen && p.trader?.toLowerCase() === op.trader?.toLowerCase() && p.isLiquidated);
+      return !chainConfirmedLiq;
+    }
     const hasRealPos = allPositions.some((p: any) => p.isOpen && p.trader?.toLowerCase() === op.trader?.toLowerCase());
     return !hasRealPos && op._txConfirmed && !wipedOutIds.has(op.positionId.toString());
   });
@@ -613,6 +665,47 @@ export default function TradePage() {
 
   const [candles, setCandles] = useState<Candle[]>([])
   const [isCandle, setIsCandle] = useState(true)
+  const [isLightMode, setIsLightMode] = useState(false)
+  const [sharePosId, setSharePosId] = useState<string | null>(null)
+
+  const handleToggleTheme = (e: React.MouseEvent) => {
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    // Fallback if view transitions are not supported
+    if (!(document as any).startViewTransition) {
+      setIsLightMode(!isLightMode);
+      return;
+    }
+
+    const endRadius = Math.hypot(
+      Math.max(x, innerWidth - x),
+      Math.max(y, innerHeight - y)
+    );
+
+    const transition = (document as any).startViewTransition(() => {
+      setIsLightMode(!isLightMode);
+    });
+
+    transition.ready.then(() => {
+      const clipPath = [
+        `circle(0px at ${x}px ${y}px)`,
+        `circle(${endRadius}px at ${x}px ${y}px)`
+      ];
+
+      document.documentElement.animate(
+        {
+          clipPath: clipPath,
+        },
+        {
+          duration: 600,
+          easing: 'cubic-bezier(0.33, 1, 0.68, 1)',
+          pseudoElement: '::view-transition-new(root)',
+        }
+      );
+    });
+  };
+
   const [countdown, setCountdown] = useState(60)
   const [currentEpoch, setCurrentEpoch] = useState<number | null>(null)
   const [epochTxInfo, setEpochTxInfo] = useState<{ settleTx?: string; startTx?: string; roundId?: number } | null>(null)
@@ -644,6 +737,8 @@ export default function TradePage() {
 
   const [roundStatus, setRoundStatus] = useState<string>("Active")
   const [settlingCountdown, setSettlingCountdown] = useState(0)
+  const [wsLatency, setWsLatency] = useState<number | null>(null)
+  const lastPingRef = useRef<number>(0)
   const settlingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const roundBaseTimeRef = useRef<number>(0)
 
@@ -906,6 +1001,37 @@ export default function TradePage() {
   const [orderTab, setOrderTab] = useState(0)
   const [chartTf, setChartTf] = useState('1s Time frame')
 
+  // ── Live market prices from CoinGecko (free, no API key) ──
+  const [extPrices, setExtPrices] = useState<Record<string, { price: number; change24h: number }>>({});
+
+  useEffect(() => {
+    const COIN_IDS = 'bitcoin,ethereum,solana,binancecoin,tron,dogecoin,chainlink,the-open-network,litecoin,avalanche-2';
+    const KEY_MAP: Record<string, string> = {
+      bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL', binancecoin: 'BNB',
+      tron: 'TRX', dogecoin: 'DOGE', chainlink: 'LINK', 'the-open-network': 'TON',
+      litecoin: 'LTC', 'avalanche-2': 'AVAX',
+    };
+    const fetchPrices = async () => {
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${COIN_IDS}&vs_currencies=usd&include_24hr_change=true`
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        const mapped: Record<string, { price: number; change24h: number }> = {};
+        for (const [id, vals] of Object.entries(data)) {
+          const sym = KEY_MAP[id];
+          if (sym) mapped[sym] = { price: (vals as any).usd, change24h: (vals as any).usd_24h_change ?? 0 };
+        }
+        setExtPrices(mapped);
+      } catch {}
+    };
+    fetchPrices();
+    const timer = setInterval(fetchPrices, 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+
   const last = candles[candles.length - 1]
   const prev = candles[candles.length - 2]
   const cur  = last?.close ?? 1.23456
@@ -973,18 +1099,30 @@ export default function TradePage() {
 
 
 
+  const mkPriceFmt = (sym: string) => {
+    const d = extPrices[sym];
+    if (!d) return { p: '', c: '', up: true };
+    const p = d.price >= 1000
+      ? d.price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : d.price >= 1
+        ? d.price.toFixed(4)
+        : d.price.toFixed(6);
+    const chg = d.change24h;
+    return { p, c: `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`, up: chg >= 0 };
+  };
+
   const MARKETS = [
-    { n: '3X/USCC', s: 'ROUND', p: cur.toFixed(5), c: `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`, up: pct >= 0, bg: '#2563eb', is3X: true },
-    { n: 'BTC/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg?v=035', comingSoon: true },
-    { n: 'ETH/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=035', comingSoon: true },
-    { n: 'SOL/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/solana-sol-logo.svg?v=035', comingSoon: true },
-    { n: 'BNB/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/bnb-bnb-logo.svg?v=035', comingSoon: true },
-    { n: 'TRX/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/tron-trx-logo.svg?v=035', comingSoon: true },
-    { n: 'DOGE/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/dogecoin-doge-logo.svg?v=035', comingSoon: true },
-    { n: 'LINK/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/chainlink-link-logo.svg?v=035', comingSoon: true },
-    { n: 'TON/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/toncoin-ton-logo.svg?v=035', comingSoon: true },
-    { n: 'LTC/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/litecoin-ltc-logo.svg?v=035', comingSoon: true },
-    { n: 'AVAX/USCC', s: 'PERP', p: '', c: '', up: true, bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/avalanche-avax-logo.svg?v=035', comingSoon: true },
+    { n: '3X', s: 'ROUND', p: cur.toFixed(5), c: `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`, up: pct >= 0, bg: '#2563eb', is3X: true },
+    { n: 'BTC',  s: 'PERP', ...mkPriceFmt('BTC'),  bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg?v=035',   comingSoon: true },
+    { n: 'ETH',  s: 'PERP', ...mkPriceFmt('ETH'),  bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=035',   comingSoon: true },
+    { n: 'SOL',  s: 'PERP', ...mkPriceFmt('SOL'),  bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/solana-sol-logo.svg?v=035',     comingSoon: true },
+    { n: 'BNB',  s: 'PERP', ...mkPriceFmt('BNB'),  bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/bnb-bnb-logo.svg?v=035',        comingSoon: true },
+    { n: 'TRX',  s: 'PERP', ...mkPriceFmt('TRX'),  bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/tron-trx-logo.svg?v=035',       comingSoon: true },
+    { n: 'DOGE', s: 'PERP', ...mkPriceFmt('DOGE'), bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/dogecoin-doge-logo.svg?v=035',   comingSoon: true },
+    { n: 'LINK', s: 'PERP', ...mkPriceFmt('LINK'), bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/chainlink-link-logo.svg?v=035',  comingSoon: true },
+    { n: 'TON',  s: 'PERP', ...mkPriceFmt('TON'),  bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/toncoin-ton-logo.svg?v=035',     comingSoon: true },
+    { n: 'LTC',  s: 'PERP', ...mkPriceFmt('LTC'),  bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/litecoin-ltc-logo.svg?v=035',    comingSoon: true },
+    { n: 'AVAX', s: 'PERP', ...mkPriceFmt('AVAX'), bg: 'rgba(255,255,255,0.03)', ic: 'https://cryptologos.cc/logos/avalanche-avax-logo.svg?v=035',  comingSoon: true },
   ]
 
   const RUN_TRADES: any[] = []
@@ -992,7 +1130,50 @@ export default function TradePage() {
   const OB_ASKS: any[] = []
 
   return (
-    <div className={styles.root}>
+    <div className={`${styles.root} ${isLightMode ? 'light-mode-active' : ''}`}>
+
+      {/* Light Mode CSS Trick */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .light-mode-active {
+          filter: invert(1) hue-rotate(180deg);
+        }
+        /* Re-invert elements that should not have inverted colors */
+        .light-mode-active img,
+        .light-mode-active svg:not(.lucide-sun):not(.lucide-moon):not(.lucide-droplet):not(.lucide-wallet):not(.lucide-search):not(.share-icon),
+        .light-mode-active .tv-lightweight-charts,
+        .light-mode-active .share-card-modal {
+          filter: invert(1) hue-rotate(180deg);
+        }
+        /* Stop double inverting SVGs and IMGs inside the re-inverted modal and buttons */
+        .light-mode-active .share-card-modal svg,
+        .light-mode-active .share-card-modal img,
+        .light-mode-active .trade-entry-btn-enabled svg {
+          filter: none !important;
+        }
+        /* Preserve correct PnL colors */
+        .light-mode-active .text-emerald-400,
+        .light-mode-active .text-red-400,
+        .light-mode-active .trade-side-btn-active {
+          filter: invert(1) hue-rotate(180deg);
+        }
+        /* Force Entry button text to white in light mode only when active/solid */
+        .light-mode-active .trade-entry-btn-enabled {
+          filter: invert(1) hue-rotate(180deg);
+          color: #fff !important;
+        }
+
+        /* View Transition Animation (Ripple) - cubic-out easing */
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+          animation: none;
+          mix-blend-mode: normal;
+        }
+        ::view-transition-old(root) { z-index: 1; }
+        ::view-transition-new(root) { 
+          z-index: 9999;
+          animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+        }
+      `}} />
 
       {/* Toast Notification */}
       {toast && (
@@ -1051,11 +1232,12 @@ export default function TradePage() {
             <div className={styles.logoBlock}>
               <LogoIcon size={16} />
             </div>
-            3xtremes
+            <span className={styles.hideMobile}>3xtremes</span>
           </Link>
 
           {/* Epoch Badge - Clickable for on-chain verification */}
           <div
+            className={styles.hideMobile}
             onClick={() => setShowEpochPopup(v => !v)}
             title="Click to verify on-chain"
             style={{
@@ -1176,7 +1358,7 @@ export default function TradePage() {
           </div>
 
           {/* Total Volume Badge - Premium Stealth Design */}
-          <div style={{
+          <div className={styles.hideMobile} style={{
             display: 'flex', alignItems: 'center', gap: 12,
             background: 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.005) 100%)',
             border: '1px solid rgba(255,255,255,0.06)',
@@ -1203,11 +1385,16 @@ export default function TradePage() {
 
           <div className={styles.tbRight}>
 
-
             {/* Balance */}
             {mounted && address && (
-              <div className={styles.tbBal}>
-                <span className={styles.tbBalLabel}>USCC</span>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: 10, padding: '0 14px', height: 36,
+                fontFamily: 'var(--mono)', fontSize: 13, fontWeight: 600,
+              }}>
+                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10, fontFamily: 'Inter Tight, sans-serif', fontWeight: 600, letterSpacing: '0.04em' }}>USCC</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Counter value={displayBalance} decimals={2} flashOnChange />
                   {isBalanceSyncing && <Loader2 size={12} className="animate-spin text-emerald-400" />}
@@ -1216,23 +1403,63 @@ export default function TradePage() {
             )}
 
             <a
+              className={styles.hideMobile}
               href="https://faucet.circle.com/"
               target="_blank"
               rel="noopener noreferrer"
-              className={styles.tbIconBtn}
-              title="Get Testnet USDC"
               style={{ 
-                textDecoration: 'none', 
-                gap: '6px',
-                padding: '0 12px',
-                width: 'auto'
+                textDecoration: 'none',
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: 10, padding: '0 12px', height: 36,
+                color: 'rgba(255,255,255,0.5)',
+                fontSize: 11, fontWeight: 600, fontFamily: 'Inter Tight, sans-serif',
+                transition: 'all 0.2s',
               }}
+              onMouseOver={e => { 
+                (e.currentTarget as HTMLElement).style.color = '#fff'; 
+              }}
+              onMouseOut={e => { 
+                (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)'; 
+              }}
+              title="Get Testnet USDC"
             >
-              <Droplet size={14} strokeWidth={2} />
-              <span style={{ fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-sans), Inter, sans-serif' }}>FAUCET</span>
+              <Droplet size={13} strokeWidth={2} />
+              <span>FAUCET</span>
             </a>
 
-            <button className={styles.tbIconBtn} onClick={() => address ? setShowWalletMenu(true) : setShowConnect(true)}>
+            {/* Light Mode Toggle */}
+            <button
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: 10, width: 36, height: 36,
+                color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseOver={e => { (e.currentTarget as HTMLElement).style.color = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; }}
+              onMouseOut={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.05)'; }}
+              onClick={handleToggleTheme}
+              title="Toggle Light Mode"
+            >
+              {isLightMode ? <Moon size={15} className="lucide-moon" /> : <Sun size={15} className="lucide-sun" />}
+            </button>
+
+            <button
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: 10, width: 36, height: 36,
+                color: 'rgba(255,255,255,0.5)', cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseOver={e => { (e.currentTarget as HTMLElement).style.color = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; }}
+              onMouseOut={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.05)'; }}
+              onClick={() => address ? setShowWalletMenu(true) : setShowConnect(true)}
+            >
               <Wallet size={15} />
             </button>
 
@@ -1243,26 +1470,69 @@ export default function TradePage() {
         {/* Body grid */}
         <div className={styles.body}>
           {/* Markets */}
-          <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.marketsCard}`}>
+          <div className={`${styles.card} ${styles.marketsCard}`}>
+            
+            {/* Search Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, padding: '0 4px' }}>
+              <div style={{
+                flex: 1, height: 36, background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10,
+                display: 'flex', alignItems: 'center', padding: '0 12px', gap: 8
+              }}>
+                <Search size={14} color="rgba(255,255,255,0.3)" />
+                <input 
+                  type="text" 
+                  placeholder="Search markets..." 
+                  value={marketSearch}
+                  onChange={e => setMarketSearch(e.target.value)}
+                  style={{
+                    background: 'transparent', border: 'none', outline: 'none', color: '#fff',
+                    fontSize: 12, width: '100%', fontFamily: 'Inter Tight, sans-serif'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Column Headers */}
+            <div style={{
+              display: 'flex', alignItems: 'center', padding: '0 10px', marginBottom: 8,
+              fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.3)',
+              fontFamily: 'Inter Tight, sans-serif', textTransform: 'uppercase', letterSpacing: '0.05em'
+            }}>
+              <div style={{ flex: 1 }}>MARKET</div>
+              <div style={{ width: 60, textAlign: 'right', marginRight: 12 }}>PRICE</div>
+              <div style={{ width: 40, textAlign: 'right' }}>24H</div>
+            </div>
 
             <div className={styles.coinList}>
-              {MARKETS.map(m => (
-                <div key={m.n} className={styles.coinRow}>
+              {MARKETS.filter(m => m.n.toLowerCase().includes(marketSearch.toLowerCase()) || m.s.toLowerCase().includes(marketSearch.toLowerCase())).map(m => (
+                <div key={m.n} className={`${styles.coinRow} ${m.is3X ? styles.coinRowActive : ''}`}>
                   <div className={`${styles.coinIcon} !rounded-full`} style={{ background: m.bg }}>
                     {m.is3X ? <LogoIcon size={16} /> : <img src={m.ic} alt={m.n} className="w-full h-full rounded-full object-contain" />}
                   </div>
                   <div className={styles.coinInfo}>
                     <div className={styles.coinName}>{m.n}</div>
-                    <div className={styles.coinSym}>{m.s}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div className={styles.coinSym}>{m.s}</div>
+                      {m.comingSoon && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          height: 14, padding: '0 4px', borderRadius: 4,
+                          fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.35)',
+                          background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                          letterSpacing: '0.06em', textTransform: 'uppercase'
+                        }}>SOON</span>
+                      )}
+                    </div>
                   </div>
                   <div className={styles.coinRight}>
-                    {m.comingSoon ? (
-                      <div className="text-[9px] font-bold text-white/40 uppercase tracking-wider whitespace-nowrap bg-white/5 px-2 py-1 rounded-md border border-white/[0.03]">Coming Soon</div>
-                    ) : (
+                    {m.p ? (
                       <>
-                        <div className={styles.coinPrice}>{m.p}</div>
-                        <div className={`${styles.coinChg} ${m.up ? styles.blue : styles.red}`}>{m.up ? '▲' : '▼'} {m.c}</div>
+                        <div className={`${styles.coinPrice} ${m.comingSoon ? 'opacity-50' : ''}`}>{m.p}</div>
+                        <div className={`${styles.coinChg} ${m.up ? styles.blue : styles.red} ${m.comingSoon ? 'opacity-50' : ''}`}>{m.c}</div>
                       </>
+                    ) : (
+                      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.15)', fontFamily: 'var(--mono)' }}>—</div>
                     )}
                   </div>
                 </div>
@@ -1271,47 +1541,53 @@ export default function TradePage() {
           </div>
 
           {/* Chart */}
-          <div className={`relative overflow-hidden rounded-2xl bg-white/[0.01] border border-white/[0.08] backdrop-blur-sm shadow-[0_4px_20px_rgba(0,0,0,0.1)] ${styles.card} ${styles.chartCard}`}>
-            {/* Compact Binance-style chart header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                <div className={styles.chartAssetIcon} style={{ background: '#2563eb', width: 32, height: 32, borderRadius: 8, flexShrink: 0 }}>
-                  <LogoIcon size={18} />
+          <div className={`${styles.card} ${styles.chartCard}`}>
+            {/* Chart Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(59,130,246,0.3)' }}>
+                    <LogoIcon size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#fff', letterSpacing: '-0.02em', lineHeight: 1.2, fontFamily: 'Inter Tight, sans-serif' }}>3X/USCC</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', letterSpacing: '0.04em' }}>Round</div>
+                  </div>
                 </div>
-                <div className={`text-2xl font-extrabold tracking-tighter tabular-nums transition-colors duration-300 ${
-                  isUp ? 'text-emerald-400' : 'text-rose-500'
-                }`} style={{ lineHeight: 1, fontFamily: 'var(--mono)', whiteSpace: 'nowrap' }}>
-                  {cur.toFixed(5)}
-                </div>
-                <div style={{
-                  fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6,
-                  background: pct >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
-                  color: pct >= 0 ? '#10b981' : '#ef4444',
-                  border: `1px solid ${pct >= 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
-                  fontFamily: 'var(--mono)', whiteSpace: 'nowrap',
-                }}>
-                  {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
+
+                <div style={{ width: 1, height: 32, background: 'rgba(255,255,255,0.06)' }} />
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--mono)', color: isUp ? '#10b981' : '#ef4444', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+                      {cur.toFixed(5)}
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--mono)', color: pct >= 0 ? '#10b981' : '#ef4444' }}>
+                      {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.4)', fontFamily: 'var(--mono)' }}>60s</span>
-                <div style={{ display: 'flex', gap: 2 }}>
-                  <button className={`${styles.tfBtn} ${isCandle ? styles.tfActive : ''}`} onClick={() => setIsCandle(true)}>Candle</button>
+
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.3)', padding: 3, borderRadius: 8, border: '1px solid rgba(255,255,255,0.04)' }}>
+                  <button className={`${styles.tfBtn} ${isCandle ? styles.tfActive : ''}`} onClick={() => setIsCandle(true)}>Candles</button>
                   <button className={`${styles.tfBtn} ${!isCandle ? styles.tfActive : ''}`} onClick={() => setIsCandle(false)}>Line</button>
                 </div>
               </div>
             </div>
+
             {/* OHLC Info Bar */}
             {last && (
               <div style={{
-                display: 'flex', gap: 16, fontSize: 11, fontFamily: 'var(--mono)', fontWeight: 500,
-                color: 'rgba(255,255,255,0.35)', marginBottom: 8, flexWrap: 'wrap',
+                display: 'flex', gap: 16, fontSize: 11, fontFamily: 'var(--mono)', fontWeight: 600,
+                color: 'rgba(255,255,255,0.4)', marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.04)',
               }}>
-                <span>O <span style={{ color: 'rgba(255,255,255,0.7)' }}>{last.open.toFixed(5)}</span></span>
-                <span>H <span style={{ color: 'rgba(255,255,255,0.7)' }}>{last.high.toFixed(5)}</span></span>
-                <span>L <span style={{ color: 'rgba(255,255,255,0.7)' }}>{last.low.toFixed(5)}</span></span>
+                <span>O <span style={{ color: 'rgba(255,255,255,0.8)' }}>{last.open.toFixed(5)}</span></span>
+                <span>H <span style={{ color: 'rgba(255,255,255,0.8)' }}>{last.high.toFixed(5)}</span></span>
+                <span>L <span style={{ color: 'rgba(255,255,255,0.8)' }}>{last.low.toFixed(5)}</span></span>
                 <span>C <span style={{ color: isUp ? '#10b981' : '#ef4444' }}>{last.close.toFixed(5)}</span></span>
-                <span>Vol <span style={{ color: 'rgba(255,255,255,0.5)' }}>{last.volume.toLocaleString()}</span></span>
+                <span style={{ marginLeft: 'auto' }}>Vol <span style={{ color: 'rgba(255,255,255,0.7)' }}>{last.volume.toLocaleString()}</span></span>
               </div>
             )}
             <div className={styles.chartWrap}>
@@ -1326,7 +1602,7 @@ export default function TradePage() {
                 </div>
               ) : (
                 <>
-                  <TradingChart data={candles} isCandle={isCandle} positions={[...chartPositions, ...visibleOptimisticPositions]} showLines={roundStatus === "Active"} />
+                  <TradingChart data={candles} isCandle={isCandle} positions={[...chartPositions, ...visibleOptimisticPositions]} showLines={roundStatus === "Active"} isLightMode={isLightMode} />
                   
                   {/* Round Status Overlay */}
                   {roundStatus !== "Active" && (
@@ -1374,7 +1650,7 @@ export default function TradePage() {
           </div>
 
           {/* Order Panel */}
-          <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.05] to-white/[0.02] border border-white/[0.08] backdrop-blur-xl shadow-[0_16px_40px_rgba(0,0,0,0.25)] z-10 ${styles.card} ${styles.orderCard}`}>
+          <div className={`${styles.card} ${styles.orderCard} relative z-10`}>
             {tradeSuccess && (
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] uppercase tracking-wider font-bold px-4 py-2.5 rounded-xl flex items-center gap-2.5 opacity-0 animate-[fadeIn_0.3s_ease-out_forwards] backdrop-blur-md z-50">
                 <CheckCircle2 size={14} className="text-emerald-400" />
@@ -1420,8 +1696,8 @@ export default function TradePage() {
                   <span style={{
                     fontSize: 14,
                     fontWeight: 700,
-                    color: countdown <= 10 ? '#ff3b30' : '#00e676',
-                    textShadow: countdown <= 10 ? '0 0 12px rgba(255,59,48,0.4)' : 'none'
+                    color: countdown <= 7 ? '#ff3b30' : '#00e676',
+                    textShadow: countdown <= 7 ? '0 0 12px rgba(255,59,48,0.4)' : 'none'
                   }}>
                     {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}
                   </span>
@@ -1432,15 +1708,15 @@ export default function TradePage() {
                   height: '100%',
                   width: `${(countdown / 60) * 100}%`,
                   borderRadius: 99,
-                  background: countdown <= 10
+                  background: countdown <= 5
                     ? 'linear-gradient(to right, #ef4444, #f97316)'
-                    : countdown <= 20
+                    : countdown <= 15
                       ? 'linear-gradient(to right, #f59e0b, #eab308)'
                       : 'linear-gradient(to right, #10b981, #3b82f6)',
                   transition: 'width 1s linear, background 0.5s ease',
-                  boxShadow: countdown <= 10
+                  boxShadow: countdown <= 5
                     ? '0 0 8px rgba(239,68,68,0.6)'
-                    : countdown <= 20
+                    : countdown <= 15
                       ? '0 0 8px rgba(245,158,11,0.5)'
                       : '0 0 8px rgba(16,185,129,0.4)',
                 }} />
@@ -1448,7 +1724,7 @@ export default function TradePage() {
             </div>
 
             {/* Long / Short Tabs */}
-            <div style={{ display: 'flex', marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 24, paddingBottom: 4, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
               {(['Long', 'Short'] as const).map((t, i) => {
                 const val    = i === 0 ? 'buy' : 'sell';
                 const isLong = i === 0;
@@ -1458,7 +1734,7 @@ export default function TradePage() {
                   <button
                     id={isLong ? 'btn-long' : 'btn-short'}
                     key={`${t}-${flashSide === val ? 'flash' : 'idle'}`}
-                    className={flashSide === val ? `anim-flash-${val}` : ''}
+                    className={`${isSel ? 'trade-side-btn-active' : ''} ${flashSide === val ? `anim-flash-${val}` : ''}`.trim()}
                     onClick={() => {
                       setSide(val);
                       setFlashSide(val);
@@ -1469,7 +1745,7 @@ export default function TradePage() {
                       padding: '12px 0',
                       border: 'none',
                       borderBottom: `2px solid ${isSel ? col : 'transparent'}`,
-                      borderRadius: '6px 6px 0 0',
+                      borderRadius: '8px',
                       cursor: 'pointer',
                       fontWeight: 700,
                       fontSize: 13,
@@ -1479,13 +1755,13 @@ export default function TradePage() {
                       background: isSel
                         ? `rgba(${isLong ? '16,185,129' : '239,68,68'}, 0.08)`
                         : 'transparent',
-                      textShadow: isSel ? `0 0 14px ${col}88` : 'none',
                     }}
                   >{t}</button>
                 );
               })}
             </div>
 
+            {/* Margin Input */}
             <div className={styles.inputGroup}>
               <span className="text-xs font-medium text-white/50 tracking-wide uppercase mb-2 block">Margin (USCC)</span>
               <div className={styles.inputWrap}>
@@ -1523,27 +1799,68 @@ export default function TradePage() {
               </div>
             </div>
 
-            <div style={{ marginBottom: '32px' }}>
+            {/* Leverage Slider */}
+            <div style={{ marginBottom: '24px' }}>
               <div className={styles.leverageRow}>
-                <span className="text-xs font-medium text-white/50">Leverage</span>
+                <span className={styles.leverageLabel}>Leverage</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="text-lg font-bold text-white">{leverage}x</span>
+                  <span className={styles.leverageVal}>{leverage}x</span>
                   {leverage >= 1000 && (
-                    <span style={{ fontSize: 10, color: leverage >= 5000 ? '#ef4444' : '#f59e0b', fontWeight: 800, padding: '2px 6px', background: leverage >= 5000 ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)', borderRadius: 4 }}>
+                    <span style={{ fontSize: 9, color: leverage >= 5000 ? '#ef4444' : '#f59e0b', fontWeight: 800, padding: '2px 6px', background: leverage >= 5000 ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)', borderRadius: 4, letterSpacing: '0.05em' }}>
                       HIGH RISK
                     </span>
                   )}
                 </div>
               </div>
-              <input
-                type="range" min={10} max={10000} step={1}
-                value={leverage}
-                onChange={e => setLeverage(Number(e.target.value))}
-                className={`${styles.slider} ${leverage >= 5000 ? styles.sliderExtremeRisk : leverage >= 1000 ? styles.sliderHighRisk : ''}`}
-                style={{
-                  background: `linear-gradient(to right, ${leverage >= 5000 ? '#ef4444' : leverage >= 1000 ? '#f59e0b' : '#2563eb'} ${(leverage / 10000) * 100}%, rgba(255,255,255,0.1) ${(leverage / 10000) * 100}%)`
-                }}
-              />
+              <div style={{ position: 'relative', height: '24px', display: 'flex', alignItems: 'center' }}>
+                {/* The gradient track */}
+                <div style={{
+                  position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', height: '6px', borderRadius: '3px',
+                  background: 'linear-gradient(to right, #10b981 0%, #eab308 50%, #ef4444 100%)',
+                  boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.3)',
+                  pointerEvents: 'none'
+                }} />
+                {/* The "unfilled" gray overlay */}
+                <div style={{
+                  position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', height: '6px', borderRadius: '0 3px 3px 0',
+                  width: `${100 - ((leverage - 1) / 9999) * 100}%`,
+                  background: 'rgba(17,20,29,0.85)',
+                  backdropFilter: 'grayscale(100%)',
+                  pointerEvents: 'none',
+                  borderLeft: '1px solid rgba(0,0,0,0.5)',
+                  transition: 'width 0.1s linear'
+                }} />
+                {(() => {
+                  const levPct = (leverage / 10000) * 100;
+                  let tr=16, tg=185, tb=129;
+                  if (levPct <= 50) {
+                    const p = levPct / 50;
+                    tr = Math.round(16 + p * (234 - 16));
+                    tg = Math.round(185 + p * (179 - 185));
+                    tb = Math.round(129 + p * (8 - 129));
+                  } else {
+                    const p = (levPct - 50) / 50;
+                    tr = Math.round(234 + p * (239 - 234));
+                    tg = Math.round(179 + p * (68 - 179));
+                    tb = Math.round(8 + p * (68 - 8));
+                  }
+                  return (
+                    <input
+                      type="range" min={10} max={10000} step={1}
+                      value={leverage}
+                      onChange={e => setLeverage(Number(e.target.value))}
+                      className={styles.slider}
+                      style={{
+                        background: 'transparent',
+                        position: 'relative', zIndex: 2, margin: 0,
+                        '--thumb-r': tr,
+                        '--thumb-g': tg,
+                        '--thumb-b': tb
+                      } as React.CSSProperties}
+                    />
+                  )
+                })()}
+              </div>
               {leverage >= 1000 && (
                 <div style={{ fontSize: 11, color: leverage >= 5000 ? 'rgba(239,68,68,0.8)' : 'rgba(245,158,11,0.8)', marginTop: '8px', lineHeight: 1.4 }}>
                   High leverage significantly increases your liquidation risk.
@@ -1551,27 +1868,26 @@ export default function TradePage() {
               )}
             </div>
 
-            {/* Action Button - right after leverage for quick entry */}
-            <div style={{ marginBottom: 20 }}>
+            {/* Action Button */}
+            <div style={{ marginBottom: '24px' }}>
               <button 
-                disabled={address ? (isOrderDisabled || isTxPending || countdown <= 7) : false}
+                disabled={address ? (isOrderDisabled || isTxPending || countdown <= 5) : false}
                 className={`w-full py-4 rounded-xl text-[15px] font-bold tracking-wide transition-all flex items-center justify-center gap-2 active:scale-[0.98] active:brightness-90 ${
                   !address 
-                    ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_20px_rgba(37,99,235,0.25)]' 
+                    ? 'trade-entry-btn-enabled bg-blue-600 hover:bg-blue-500 text-white shadow-[0_4px_20px_rgba(37,99,235,0.25)]' 
                     : isTxPending
                       ? 'bg-white/[0.05] text-white/70 cursor-not-allowed border border-white/[0.05] active:scale-100 active:brightness-100'
-                      : (isOrderDisabled || countdown <= 7)
+                      : (isOrderDisabled || countdown <= 5)
                         ? 'bg-white/[0.03] text-white/20 cursor-not-allowed border border-white/[0.05] active:scale-100 active:brightness-100'
                         : side === 'buy' 
-                          ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_20px_rgba(16,185,129,0.25)] hover:shadow-[0_6px_24px_rgba(16,185,129,0.4)]' 
-                          : 'bg-rose-500 hover:bg-rose-400 text-white shadow-[0_4px_20px_rgba(244,63,94,0.25)] hover:shadow-[0_6px_24px_rgba(244,63,94,0.4)]'
+                          ? 'trade-entry-btn-enabled bg-emerald-500 hover:bg-emerald-400 text-white shadow-[0_4px_20px_rgba(16,185,129,0.25)] hover:shadow-[0_6px_24px_rgba(16,185,129,0.4)]' 
+                          : 'trade-entry-btn-enabled bg-rose-500 hover:bg-rose-400 text-white shadow-[0_4px_20px_rgba(244,63,94,0.25)] hover:shadow-[0_6px_24px_rgba(244,63,94,0.4)]'
                 }`} 
                 onClick={() => {
                   if (!address) return setShowConnect(true)
-                  if (isOrderDisabled || countdown <= 7) return;
+                  if (isOrderDisabled || countdown <= 5) return;
                   if (isTxPending) return;
                   
-                  // ── HYBRID DEX: Send OPEN_POSITION to bot via WebSocket ──
                   setIsTxPending(true)
 
                   const parsedAmount = parseFloat(amount);
@@ -1644,7 +1960,7 @@ export default function TradePage() {
                 }}
               >
                 {/* Button label - countdown lock takes highest priority */}
-                {countdown <= 7 && address ? (
+                {countdown <= 5 && address ? (
                   'ROUND LOCKED'
                 ) : isTxPending ? (
                   <><Loader2 size={18} className="animate-spin" /> EXECUTING...</>
@@ -1657,40 +1973,42 @@ export default function TradePage() {
                 ) : (
                   `OPEN ${side === 'buy' ? 'LONG' : 'SHORT'}`
                 )}
-                {(!isOrderDisabled && !!address && countdown > 7) && !isTxPending && (
+                {(!isOrderDisabled && !!address && countdown > 5) && !isTxPending && (
                   side === 'buy' ? <ArrowUpRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" /> : <ArrowDownRight size={18} strokeWidth={2.5} className="ml-1 opacity-80" />
                 )}
               </button>
             </div>
 
-            <div className={styles.divider} style={{ margin: '0 0 24px', opacity: 0.3 }} />
-
-            <div className="flex flex-col gap-4 mb-9">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Order Value</span>
-                <span className="text-base font-semibold text-white/90">{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
+            {/* Order Details - shown BELOW the button */}
+            <div style={{ marginBottom: 0, background: 'rgba(0,0,0,0.2)', borderRadius: 12, padding: '4px 14px', border: '1px solid rgba(255,255,255,0.04)' }}>
+              <div className={styles.orderDetailRow}>
+                <span className={styles.orderDetailLabel}>Order Value</span>
+                <span className={styles.orderDetailVal}>{notional.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USCC</span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Opening Fee (0.01%)</span>
-                <span className="text-base font-semibold text-white/70">{openFee.toFixed(2)} USCC</span>
+              <div className={styles.orderDetailDivider} />
+              <div className={styles.orderDetailRow}>
+                <span className={styles.orderDetailLabel}>Opening Fee (0.01%)</span>
+                <span className={styles.orderDetailVal}>{openFee.toFixed(2)} USCC</span>
               </div>
-              <div className="flex justify-between items-center border-t border-white/5 pt-3 mt-1">
-                <span className="text-xs font-bold text-white/60">Total Required</span>
-                <span className={`text-base font-bold ${isExceedsBalance ? 'text-rose-500' : 'text-white'}`}>{totalRequired.toFixed(2)} USCC</span>
+              <div className={styles.orderDetailDivider} />
+              <div className={styles.orderDetailRow}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.6)' }}>Total Required</span>
+                <span className={`${styles.orderDetailValBig} ${isExceedsBalance ? '!text-rose-500' : ''}`}>{totalRequired.toFixed(2)} USCC</span>
               </div>
-              <div className={styles.divider} style={{ margin: '8px 0', opacity: 0.2 }} />
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Est. Liq Price</span>
-                <span className="text-base font-semibold text-white/90">{estLiq.toFixed(5)}</span>
+              <div className={styles.orderDetailDivider} />
+              <div className={styles.orderDetailRow}>
+                <span className={styles.orderDetailLabel}>Est. Liq Price</span>
+                <span className={styles.orderDetailVal}>{estLiq.toFixed(5)}</span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-medium text-white/50">Slippage</span>
-                <span className="text-base font-semibold text-emerald-400">0.00%</span>
+              <div className={styles.orderDetailDivider} />
+              <div className={styles.orderDetailRow}>
+                <span className={styles.orderDetailLabel}>Slippage</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#10b981', fontFamily: 'var(--mono)' }}>0.00%</span>
               </div>
-            </div>{/* end details flex */}
+            </div>
           </div>{/* end order card */}
 
-          <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.runCard}`}>
+          <div className={`${styles.card} ${styles.runCard}`}>
             <div className={styles.cardTitle}>Summary</div>
             <table className={styles.tbl}>
               <tbody>
@@ -1703,35 +2021,35 @@ export default function TradePage() {
                   return (
                     <>
                       <tr>
-                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Balance</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, paddingBottom: 6 }}>Balance</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.3)', paddingBottom: 6 }}>
                           <Counter value={displayBalance} decimals={2} style={{ color: '#fff' }} /> <span style={{ fontWeight: 500 }}>USCC</span>
                         </td>
                       </tr>
                       <tr>
-                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Total Profit</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, paddingBottom: 6 }}>Total Profit</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.3)', paddingBottom: 6 }}>
                           <span style={{ color: totalProfit > 0 ? '#10b981' : 'rgba(255,255,255,0.4)' }}>{totalProfit > 0 ? '+' : ''}{totalProfit.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
                         </td>
                       </tr>
                       <tr>
-                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Total Loss</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.3)' }}>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, paddingBottom: 6 }}>Total Loss</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.3)', paddingBottom: 6 }}>
                           <span style={{ color: totalLoss > 0 ? '#ef4444' : 'rgba(255,255,255,0.4)' }}>{totalLoss > 0 ? '-' : ''}{totalLoss.toFixed(2)}</span> <span style={{ fontWeight: 500 }}>USCC</span>
                         </td>
                       </tr>
                       <tr>
-                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>Win Rate</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: 'rgba(255,255,255,0.25)' }}>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, paddingBottom: 10 }}>Win Rate</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 13, color: 'rgba(255,255,255,0.25)', paddingBottom: 10 }}>
                           <span style={{ color: winrate >= 50 ? '#10b981' : winrate > 0 ? '#f59e0b' : 'rgba(255,255,255,0.4)' }}>
                             {closedPositions.length > 0 ? `${winrate.toFixed(0)}%` : '-'}
                           </span>
-                          {closedPositions.length > 0 && <span style={{ fontWeight: 400, fontSize: 10 }}> ({wins.length}/{closedPositions.length})</span>}
+                          {closedPositions.length > 0 && <span style={{ fontWeight: 400, fontSize: 11 }}> ({wins.length}/{closedPositions.length})</span>}
                         </td>
                       </tr>
                       <tr style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, paddingTop: 8 }}>All Time</td>
-                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 13, paddingTop: 8, color: 'rgba(255,255,255,0.3)' }}>
+                        <td style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, paddingTop: 10 }}>All Time</td>
+                        <td style={{ textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 800, fontSize: 15, paddingTop: 10, color: 'rgba(255,255,255,0.3)' }}>
                           {closedPositions.length > 0 ? (
                             <>
                               <span style={{ color: (totalProfit - totalLoss) > 0 ? '#10b981' : (totalProfit - totalLoss) < 0 ? '#ef4444' : 'rgba(255,255,255,0.4)' }}>
@@ -1748,7 +2066,7 @@ export default function TradePage() {
             </table>
           </div>
 
-          <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.obCard}`}>
+          <div className={`${styles.card} ${styles.obCard}`}>
             <div className={styles.cardTitle}>Positions</div>
             <div className={styles.obWrap}>
               {isLoading ? (
@@ -1775,15 +2093,17 @@ export default function TradePage() {
                         const lev    = Number(p.leverage);
                         const isWipedOut = wipedOutIds.has(posId);
                         const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
-                        // Optimistic: PnL starts live from 0 using current price
+                        // If wiped out, lock PnL at -100%. Never recalculate from live price.
                         const livePnl = isWipedOut ? -margin : (entry > 0 ? (priceDiff / entry) * (margin * lev) : 0);
                         const rawPnl  = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
                         const displayPnl    = isWipedOut ? -margin : Math.max(rawPnl, -margin);
                         const isPnlPositive = displayPnl >= 0;
-                        const pnlPct        = Math.max((displayPnl / margin) * 100, -100);
+                        const pnlPct        = isWipedOut ? -100 : Math.max((displayPnl / margin) * 100, -100);
                         const liqPrice    = Number(p.liquidationPrice) / 1e5;
-                        const isUnderwater = (p.isLong ? (cur <= liqPrice) : (cur >= liqPrice));
-                        const isLiquidated = isWipedOut || isUnderwater;
+                        // isLiquidated is PERMANENT once wipedOutIds has this posId.
+                        // Do NOT use live `cur` price for this — it can recover and
+                        // falsely un-liquidate the position in the UI.
+                        const isLiquidated = isWipedOut || !!p._liquidated;
                         
                         // Force display PnL to -margin if liquidated
                         const finalDisplayPnl = isLiquidated ? -margin : displayPnl;
@@ -1793,7 +2113,7 @@ export default function TradePage() {
                         return (
                           <tr key={posId} style={isLiquidated ? { background: 'rgba(239, 68, 68, 0.07)' } : {}}>
                             <td style={{ verticalAlign: 'middle', padding: '10px 0' }}>
-                              <div className="flex items-center gap-2.5">
+                              <div className="flex flex-col sm:flex-row sm:items-center items-start gap-0.5 sm:gap-2.5">
                                 <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontWeight: 800, fontSize: 11 }}>{p.isLong ? 'LONG' : 'SHORT'}</span>
                                 <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,0.9)' }}>{fmtPrice(p.entryPrice)}</span>
                               </div>
@@ -1820,14 +2140,25 @@ export default function TradePage() {
                               ) : closingPositionIds.has(posId) ? (
                                 <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(245,158,11,0.2)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CLOSING...</span>
                               ) : (
-                                <button
-                                  className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
-                                  disabled={!!p._optimistic}
-                                  onClick={() => {
-                                    if (p._optimistic) return;
-                                    setCloseConfirmPos(p);
-                                  }}
-                                >{p._optimistic ? '...' : 'Close'}</button>
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-2 py-1.5 rounded-lg transition-colors border border-white/5 flex items-center justify-center"
+                                    onClick={() => {
+                                      setSharePosId(posId);
+                                    }}
+                                    title="Share PnL Card"
+                                  >
+                                    <Camera size={14} className="share-icon" />
+                                  </button>
+                                  <button
+                                    className="bg-white/5 hover:bg-white/10 text-white/60 hover:text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors border border-white/5"
+                                    disabled={!!p._optimistic}
+                                    onClick={() => {
+                                      if (p._optimistic) return;
+                                      setCloseConfirmPos(p);
+                                    }}
+                                  >{p._optimistic ? '...' : 'Close'}</button>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -1838,13 +2169,13 @@ export default function TradePage() {
                 </table>
               ) : (
                 <div className="w-full h-full">
-                  <EmptyState icon={Wallet} title="No Active Positions" desc="Your open positions will appear here once executed." />
+                  <EmptyState icon={Wallet} title="No open positions" desc="Open a position to get started" />
                 </div>
               )}
             </div>
           </div>
 
-          <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-b from-white/[0.03] to-white/[0.01] border border-white/[0.08] backdrop-blur-md shadow-[0_8px_30px_rgba(0,0,0,0.12)] hover:from-white/[0.04] hover:to-white/[0.02] hover:-translate-y-[1px] transition-all duration-300 ${styles.card} ${styles.myCard}`}>
+          <div className={`${styles.card} ${styles.myCard}`}>
             <div className={styles.cardTitle}>
               <span>Position History</span>
             </div>
@@ -1884,8 +2215,8 @@ export default function TradePage() {
                             {fmtUscc(p.margin)} USCC
                           </td>
                           <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
-                            <span style={{ color: p.isLong ? 'var(--blue)' : 'var(--red)', fontSize: 10, fontWeight: 700 }}>
-                              {p.isLong ? 'Long' : 'Short'}
+                            <span style={{ color: p.isLong ? '#10b981' : '#ef4444', fontSize: 11, fontWeight: 800, letterSpacing: '0.04em' }}>
+                              {p.isLong ? 'LONG' : 'SHORT'}
                             </span>
                           </td>
                         </tr>
@@ -1894,12 +2225,11 @@ export default function TradePage() {
                   </tbody>
                 </table>
               ) : (
-                <EmptyState icon={Settings} title="No History" desc="Your past trades and closed positions will be listed here." />
+                <EmptyState icon={History} title="No History" desc="Your past trades and closed positions will be listed here." />
               )}
             </div>
           </div>
         </div>
-      </div>
 
       {/* Close Position Confirmation Popup */}
       {closeConfirmPos && (() => {
@@ -2055,6 +2385,90 @@ export default function TradePage() {
       {showDeposit  && <DepositModal onClose={() => setShowDeposit(false)} />}
       {showWithdraw && <WithdrawModal onClose={() => setShowWithdraw(false)} />}
       {showConnect  && <ConnectWalletModal onClose={() => setShowConnect(false)} />}
+      
+      {/* PnL Share Card Modal */}
+      {(() => {
+        if (!sharePosId) return null;
+        const p = [...visibleOpenPositions, ...visibleOptimisticPositions].find(x => x.positionId.toString() === sharePosId);
+        if (!p) return null;
+
+        const pnlIdx = ids.findIndex(id => id === p.positionId);
+        const contractPnl = (pnlsRaw as any)?.[pnlIdx]?.result ? BigInt((pnlsRaw as any)[pnlIdx].result) : 0n;
+        const posId  = p.positionId.toString();
+        const entry  = Number(p.entryPrice) / 1e5;
+        const margin = Number(p.margin) / 1e6;
+        const lev    = Number(p.leverage);
+        const isWipedOut = wipedOutIds.has(posId);
+        const priceDiff = p.isLong ? (cur - entry) : (entry - cur);
+        const livePnl = isWipedOut ? -margin : (entry > 0 ? (priceDiff / entry) * (margin * lev) : 0);
+        const rawPnl  = isNaN(livePnl) ? (Number(contractPnl) / 1e6) : livePnl;
+        const displayPnl = isWipedOut ? -margin : Math.max(rawPnl, -margin);
+        const pnlPct = Math.max((displayPnl / margin) * 100, -100);
+        const liqPrice = Number(p.liquidationPrice) / 1e5;
+        const isUnderwater = (p.isLong ? (cur <= liqPrice) : (cur >= liqPrice));
+        const isLiquidated = isWipedOut || isUnderwater || !!p._liquidated;
+        const finalDisplayPnl = isLiquidated ? -margin : displayPnl;
+        const finalPnlPct = isLiquidated ? -100 : pnlPct;
+
+        return (
+          <ShareCardModal 
+            isOpen={true} 
+            onClose={() => setSharePosId(null)} 
+            market="3X/USCC"
+            isLong={p.isLong}
+            leverage={lev}
+            entryPrice={entry}
+            pnlPercent={finalPnlPct}
+            pnlValue={finalDisplayPnl}
+          />
+        );
+      })()}
+
+      {/* ── Status Footer Bar ── */}
+      <div className={styles.statusFooter}>
+        {/* Left: Network + WS status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: wsRef.current?.readyState === WebSocket.OPEN ? '#10b981' : '#ef4444', display: 'inline-block', boxShadow: wsRef.current?.readyState === WebSocket.OPEN ? '0 0 4px #10b981' : '0 0 4px #ef4444' }} />
+          <span style={{ color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>Network</span>
+          <span style={{ color: wsRef.current?.readyState === WebSocket.OPEN ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+            {wsRef.current?.readyState === WebSocket.OPEN ? 'Healthy' : 'Disconnected'}
+          </span>
+        </div>
+
+        {/* Latency */}
+        {wsLatency !== null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ color: 'rgba(255,255,255,0.2)' }}>●</span>
+            <span style={{ fontFamily: 'var(--mono)', color: wsLatency < 50 ? '#10b981' : wsLatency < 150 ? '#f59e0b' : '#ef4444', fontWeight: 600 }}>
+              {wsLatency}ms
+            </span>
+          </div>
+        )}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Right: Links + status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {[
+            { label: 'Docs', href: '/docs' },
+            { label: 'X / Twitter', href: 'https://x.com/chiquast' },
+            { label: 'Telegram', href: 'https://t.me/airdropjets' },
+          ].map(lnk => (
+            <a key={lnk.label} href={lnk.href} target={lnk.href.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" style={{ color: 'rgba(255,255,255,0.3)', textDecoration: 'none', fontWeight: 500, transition: 'color 0.15s' }}
+              onMouseOver={e => (e.currentTarget.style.color = '#fff')}
+              onMouseOut={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}>
+              {lnk.label}
+            </a>
+          ))}
+          <div style={{ width: 1, height: 12, background: 'rgba(255,255,255,0.08)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>All Systems Operational</span>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
   )
 }

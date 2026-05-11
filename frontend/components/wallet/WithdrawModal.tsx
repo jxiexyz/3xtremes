@@ -36,10 +36,11 @@ export default function WithdrawModal({ onClose }: Props) {
     query: { enabled: !!address },
   })
 
-  const { writeContract, data: txHash, isPending: isWalletPending } = useWriteContract()
-  const { isLoading: isTxConfirming, isSuccess: isTxSuccess } = useWaitForTransactionReceipt({ hash: txHash })
+  const { writeContract, data: txHash, isPending: isWalletPending, error: writeError, reset: resetWrite } = useWriteContract()
+  const { isLoading: isTxConfirming, isSuccess: isTxSuccess, error: txError } = useWaitForTransactionReceipt({ hash: txHash })
 
   const isTxPending = isWalletPending || isTxConfirming
+  const errorMsg = writeError || txError
 
   // USCC stored as: usdcAmount(6dec) × 1000 → raw / 1e6 = human-readable USCC
   // e.g. 1 USDC deposit: raw = 1_000_000 × 1000 = 1_000_000_000 → 1000 USCC displayed
@@ -71,11 +72,14 @@ export default function WithdrawModal({ onClose }: Props) {
   function handleWithdraw() {
     if (!canWithdraw) return
     setStep('withdrawing')
+    resetWrite()
     writeContract({
       address: CONTRACTS.CREDIT_VAULT as `0x${string}`,
       abi: CREDIT_VAULT_ABI,
       functionName: 'withdraw',
       args: [usccToWithdraw],
+    }, {
+      onError: () => setStep('idle')
     })
   }
 
@@ -101,6 +105,16 @@ export default function WithdrawModal({ onClose }: Props) {
         @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
         @keyframes slideUp { from { opacity:0; transform:translateY(14px) } to { opacity:1; transform:translateY(0) } }
         @keyframes spin { to { transform: rotate(360deg) } }
+        @keyframes iosFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes successPop {
+          0% { transform: scale(0.8); opacity: 0; }
+          50% { transform: scale(1.1); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes successRipple {
+          0% { transform: scale(0.8); opacity: 1; border-width: 2px; }
+          100% { transform: scale(2.2); opacity: 0; border-width: 1px; }
+        }
       `}</style>
 
       <div
@@ -130,11 +144,26 @@ export default function WithdrawModal({ onClose }: Props) {
 
         {step === 'done' ? (
           /* ── Success state ── */
-          <div style={{ textAlign: 'center', padding: '20px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <CheckCircle2 size={56} color="#3b82f6" />
+          <div style={{ textAlign: 'center', padding: '20px 0', display: 'flex', flexDirection: 'column', gap: 12, animation: 'iosFadeIn 0.4s ease-out forwards' }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 64, height: 64, margin: '0 auto 10px' }}>
+              {/* Ripple Ring */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '50%',
+                border: '2px solid rgba(59,130,246,0.6)',
+                animation: 'successRipple 1.2s ease-out forwards'
+              }} />
+              {/* Main Circle */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: '50%',
+                background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'successPop 0.5s cubic-bezier(0.17, 0.89, 0.32, 1.28) forwards',
+                zIndex: 1
+              }}>
+                <CheckCircle2 size={32} color="#3b82f6" />
+              </div>
             </div>
-            <div style={{ color: '#3b82f6', fontWeight: 600, fontFamily: "Inter, -apple-system, sans-serif" }}>Withdrawal successful!</div>
+            <div style={{ color: '#fff', fontWeight: 700, fontSize: 20, fontFamily: "'Inter Tight', sans-serif", letterSpacing: '-0.02em' }}>Withdrawal successful!</div>
             <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, fontFamily: "'JetBrains Mono', monospace" }}>
               +{usdcToReceive.toFixed(2)} USDC sent to your wallet
             </div>
@@ -241,6 +270,15 @@ export default function WithdrawModal({ onClose }: Props) {
                 <span style={{ color: '#3b82f6', fontWeight: 700, fontSize: 18, fontFamily: "'JetBrains Mono', monospace" }}>
                   {usdcToReceive.toFixed(2)} USDC
                 </span>
+              </div>
+            )}
+
+            {/* Error message */}
+            {errorMsg && (
+              <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 12, padding: '10px 14px', fontSize: 12, color: 'rgba(239,68,68,0.8)', fontFamily: 'var(--font-sans), Inter, sans-serif', lineHeight: 1.4, marginBottom: 8 }}>
+                {errorMsg.message?.includes('rejected') || errorMsg.message?.includes('denied')
+                  ? 'Transaction was rejected by your wallet.'
+                  : errorMsg.message?.split('\n')[0] || 'Transaction failed. Please try again.'}
               </div>
             )}
 

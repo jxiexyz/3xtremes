@@ -35,16 +35,16 @@
     --radius: 1rem;
 
     /* Trade page tokens */
-    --panel:        rgba(4, 11, 30, 0.85);
-    --border:       rgba(30, 58, 138, 0.4);
-    --border-subtle:rgba(255,255,255,0.05);
+    --panel:        #11141d;
+    --border:       rgba(255, 255, 255, 0.05);
+    --border-subtle:rgba(255, 255, 255, 0.02);
     --blue:         #3b82f6;
     --blue-dim:     #2563eb;
     --blue-bg:      rgba(59,130,246,0.12);
     --blue-glow:    rgba(59,130,246,0.4);
-    --red:          #ff3b30;
-    --red-bg:       rgba(255,59,48,0.12);
-    --muted:        rgba(255,255,255,0.4);
+    --red:          #ef4444;
+    --red-bg:       rgba(239,68,68,0.12);
+    --muted:        rgba(255, 255, 255, 0.4);
     --mono:         'JetBrains Mono', monospace;
   }
 }
