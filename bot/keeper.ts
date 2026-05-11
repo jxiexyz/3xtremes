@@ -172,6 +172,7 @@ let candleHistory: any[] = [];
 let openPositions = new Map<string, any>();
 let liquidating = new Set<string>();
 let totalVolume = loadVolume(); // Read from file on startup
+let currentRoundSecond = -1; // Tracks which second we are in (0-59), -1 = between rounds
 
 async function watchEvents() {
   log("👀 Watching PositionOpened & PositionClosed events...");
@@ -436,6 +437,7 @@ async function startRound() {
 
 function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
   stopLoop();
+  currentRoundSecond = 0; // Reset at round start — no stale lock window from previous round
   let idx = 0;
   candleInterval = setInterval(() => {
     if (idx >= candles.length) {
@@ -444,6 +446,7 @@ function streamCandles(roundId: number, candles: Candle[], finalPrice: number) {
     }
     const candle = candles[idx];
     const isLockWindow = candle.second >= 55;
+    currentRoundSecond = candle.second; // ← keep bot's internal clock in sync
     const candleMsg = {
       type: "CANDLE",
       roundId,
@@ -555,6 +558,14 @@ async function settleOnChain(roundId: number, finalPrice: number) {
 }
 
 async function backendOpen(trader: `0x${string}`, isLong: boolean, margin: bigint, leverage: bigint, price: number) {
+  // ── Pre-check: reject immediately if we're in the lock window ──
+  // Contract locks at second >= 55 (last 5s). We check at >= 54 to absorb
+  // 1 second of network/processing latency and avoid a guaranteed revert.
+  if (currentRoundSecond >= 54 || isBackgroundSettling) {
+    log(`🔒 OPEN rejected — in lock window (second=${currentRoundSecond}, settling=${isBackgroundSettling})`);
+    broadcast({ type: "POSITION_FAILED", trader, reason: "in_lock_window" });
+    return;
+  }
   while (isBackgroundSettling) await new Promise(r => setTimeout(r, 200));
   let attempts = 0;
   while (attempts < 3) {
