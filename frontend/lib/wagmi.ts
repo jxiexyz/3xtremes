@@ -29,6 +29,10 @@ export const config = createConfig({
     coinbaseWallet({ appName: '3xtremes', appLogoUrl: 'https://3xtremes.app/logo.png' }),
   ],
   transports: {
-    [arcTestnet.id]: http(),
+    [arcTestnet.id]: http('https://rpc.testnet.arc.network', {
+      retryCount: 5,
+      retryDelay: 1000,
+      timeout: 30_000,
+    }),
   },
 })

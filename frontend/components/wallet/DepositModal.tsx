@@ -37,6 +37,8 @@ export default function DepositModal({ onClose }: Props) {
 
   const { isLoading: isTxConfirming, isSuccess: isTxSuccess, error: txError } = useWaitForTransactionReceipt({
     hash: txHash,
+    timeout: 300_000,        // 5 menit — Arc Testnet kadang lambat
+    pollingInterval: 2_000,  // poll tiap 2 detik
   })
 
   const isTxPending = isWalletPending || isTxConfirming
