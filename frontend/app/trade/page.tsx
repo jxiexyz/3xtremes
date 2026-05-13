@@ -1786,12 +1786,15 @@ export default function TradePage() {
                     key={p} 
                     className={styles.pctBtn} 
                     onClick={() => {
-                      const maxMargin = displayBalance / (1 + (leverage * 0.005));
+                      // Fee = margin * leverage * 0.0001 (0.01% of notional)
+                      // Solve: margin + (margin * leverage * 0.0001) = balance
+                      // → margin = balance / (1 + leverage * 0.0001)
+                      const maxMargin = displayBalance / (1 + leverage * 0.0001);
                       setAmount(
                         p === '25%' ? (maxMargin * 0.25).toFixed(2) :
                         p === '50%' ? (maxMargin * 0.50).toFixed(2) :
                         p === '75%' ? (maxMargin * 0.75).toFixed(2) :
-                        (maxMargin * 0.999).toFixed(2) // 0.999 for extra safety against rounding
+                        maxMargin.toFixed(2)
                       )
                     }}
                   >{p}</button>
